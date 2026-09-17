@@ -1,0 +1,4 @@
+# 回归脚本生成的临时项目（含合成数据），不进版本库
+tests/.demo-project/
+docs/*.tmp
+.DS_Store

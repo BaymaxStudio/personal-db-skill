@@ -1,0 +1,30 @@
+{
+  "_说明": "端到端回归用的候选样例（内容全部虚构）。tests/run_e2e.sh 会把 __PROJECT_ROOT__ 与 __SHA256__ 替换成真实路径与哈希后写入临时项目。",
+  "candidateVersion": "1.0.0",
+  "generatedAt": "2026-09-17T00:00:00Z",
+  "sources": [
+    {
+      "sourceId": "evidence.demo",
+      "absolutePath": "__PROJECT_ROOT__/materials/demo-material.txt",
+      "documentType": "txt",
+      "sha256": "__SHA256__"
+    }
+  ],
+  "candidates": [
+    { "candidateId": "c.person.name", "entityType": "person", "entityKey": "person.owner", "fieldPath": "person.fullName.zhCN", "proposedValue": "张三", "locale": "zh-CN", "status": "pending", "conflictGroupId": null, "sourceRefs": [{ "sourceId": "evidence.demo", "locator": "第3行", "excerpt": "张三" }] },
+    { "candidateId": "c.person.name.en", "entityType": "person", "entityKey": "person.owner", "fieldPath": "person.fullName.en", "proposedValue": "Zhang San", "locale": "en", "status": "pending", "conflictGroupId": null, "sourceRefs": [{ "sourceId": "evidence.demo", "locator": "第3行", "excerpt": "Zhang San" }] },
+    { "candidateId": "c.person.email", "entityType": "person", "entityKey": "person.owner", "fieldPath": "person.contact.email", "proposedValue": "zhangsan@example.com", "locale": null, "status": "pending", "conflictGroupId": null, "sourceRefs": [{ "sourceId": "evidence.demo", "locator": "第4行", "excerpt": "zhangsan@example.com" }] },
+    { "candidateId": "c.edu.institution", "entityType": "education", "entityKey": "education.bachelor", "fieldPath": "education.institution", "proposedValue": "示例大学", "locale": "zh-CN", "status": "pending", "conflictGroupId": null, "sourceRefs": [{ "sourceId": "evidence.demo", "locator": "第7行", "excerpt": "示例大学" }] },
+    { "candidateId": "c.edu.degree", "entityType": "education", "entityKey": "education.bachelor", "fieldPath": "education.degree", "proposedValue": "本科", "locale": "zh-CN", "status": "pending", "conflictGroupId": null, "sourceRefs": [{ "sourceId": "evidence.demo", "locator": "第7行", "excerpt": "本科" }] },
+    { "candidateId": "c.edu.major", "entityType": "education", "entityKey": "education.bachelor", "fieldPath": "education.major", "proposedValue": "计算机科学与技术", "locale": "zh-CN", "status": "pending", "conflictGroupId": null, "sourceRefs": [{ "sourceId": "evidence.demo", "locator": "第7行", "excerpt": "计算机科学与技术" }] },
+    { "candidateId": "c.edu.gpa", "entityType": "education", "entityKey": "education.bachelor", "fieldPath": "education.gpa", "proposedValue": "3.8/4.0", "locale": null, "status": "pending", "conflictGroupId": null, "sourceRefs": [{ "sourceId": "evidence.demo", "locator": "第8行", "excerpt": "3.8/4.0" }] },
+    { "candidateId": "c.exp.type", "entityType": "experience", "entityKey": "experience.intern-demo", "fieldPath": "experience.type", "proposedValue": "professional", "locale": null, "status": "pending", "conflictGroupId": null, "sourceRefs": [{ "sourceId": "evidence.demo", "locator": "第11行", "excerpt": "实习经历" }] },
+    { "candidateId": "c.exp.org", "entityType": "experience", "entityKey": "experience.intern-demo", "fieldPath": "experience.organization", "proposedValue": "示例科技", "locale": "zh-CN", "status": "pending", "conflictGroupId": null, "sourceRefs": [{ "sourceId": "evidence.demo", "locator": "第12行", "excerpt": "示例科技" }] },
+    { "candidateId": "c.exp.title", "entityType": "experience", "entityKey": "experience.intern-demo", "fieldPath": "experience.title", "proposedValue": "数据分析实习生", "locale": "zh-CN", "status": "pending", "conflictGroupId": null, "sourceRefs": [{ "sourceId": "evidence.demo", "locator": "第12行", "excerpt": "数据分析实习生" }] },
+    { "candidateId": "c.exp.overview", "entityType": "experience", "entityKey": "experience.intern-demo", "fieldPath": "experience.fact.overview", "proposedValue": "负责用户留存分析，每周产出留存周报。", "locale": "zh-CN", "status": "pending", "conflictGroupId": null, "sourceRefs": [{ "sourceId": "evidence.demo", "locator": "第13行", "excerpt": "负责用户留存分析" }] },
+    { "candidateId": "c.skill.category", "entityType": "skill", "entityKey": "skill.python", "fieldPath": "skill.category", "proposedValue": "technical", "locale": null, "status": "pending", "conflictGroupId": null, "sourceRefs": [{ "sourceId": "evidence.demo", "locator": "第16行", "excerpt": "技能" }] },
+    { "candidateId": "c.skill.name", "entityType": "skill", "entityKey": "skill.python", "fieldPath": "skill.name", "proposedValue": "Python", "locale": null, "status": "pending", "conflictGroupId": null, "sourceRefs": [{ "sourceId": "evidence.demo", "locator": "第16行", "excerpt": "Python" }] },
+    { "candidateId": "c.skill.level", "entityType": "skill", "entityKey": "skill.python", "fieldPath": "skill.level", "proposedValue": "熟练", "locale": "zh-CN", "status": "pending", "conflictGroupId": null, "sourceRefs": [{ "sourceId": "evidence.demo", "locator": "第16行", "excerpt": "熟练" }] },
+    { "candidateId": "c.award.name", "entityType": "award", "entityKey": "award.scholarship-demo", "fieldPath": "award.name", "proposedValue": "示例大学一等奖学金", "locale": "zh-CN", "status": "pending", "conflictGroupId": null, "sourceRefs": [{ "sourceId": "evidence.demo", "locator": "第19行", "excerpt": "示例大学一等奖学金" }] }
+  ]
+}
