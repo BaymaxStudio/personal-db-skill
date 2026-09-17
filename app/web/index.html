@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>个人资料库 · 网申速查</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;700&display=swap">
+<style>
+  :root {
+    --ink: #0d1017;
+    --slate: #151a24;
+    --panel: #1a2030;
+    --panel-hi: #212838;
+    --steel: #2a3348;
+    --steel-hi: #3a4560;
+    --cloud: #dce1ec;
+    --mist: #a0a9be;
+    --fog: #6b7690;
+    --ash: #454f66;
+    --cobalt: #4a90ff;
+    --cobalt-soft: rgba(74,144,255,.1);
+    --cobalt-border: rgba(74,144,255,.22);
+    --cobalt-glow: rgba(74,144,255,.06);
+    --sage: #3bb373;
+    --sage-soft: rgba(59,179,115,.1);
+    --sage-border: rgba(59,179,115,.22);
+    --zh-color: #60a5fa;
+    --zh-bg: rgba(96,165,250,.08);
+    --zh-border: rgba(96,165,250,.18);
+    --en-color: #c084fc;
+    --en-bg: rgba(192,132,252,.08);
+    --en-border: rgba(192,132,252,.18);
+    --warn: #e0a040;
+    --header-bg: rgba(13,16,23,.82);
+    --r: 10px;
+    --r-sm: 6px;
+  }
+
+  * { box-sizing: border-box; margin: 0; }
+  html { height: 100%; }
+  body {
+    min-height: 100%;
+    background: var(--ink);
+    color: var(--cloud);
+    font: 13.5px/1.7 -apple-system, BlinkMacSystemFont, "PingFang SC",
+          "Noto Sans SC", "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── top bar ── */
+  header {
+    position: sticky; top: 0; z-index: 20;
+    display: flex; align-items: center; gap: 12px;
+    height: 50px; padding: 0 22px;
+    background: var(--header-bg);
+    backdrop-filter: blur(14px) saturate(1.4);
+    -webkit-backdrop-filter: blur(14px) saturate(1.4);
+    border-bottom: 1px solid var(--steel);
+  }
+  .brand {
+    font: 700 15px/1 "Noto Serif SC", "PingFang SC", serif;
+    letter-spacing: .03em; white-space: nowrap;
+    color: var(--cloud);
+  }
+  .brand small {
+    font: 400 11px/1 -apple-system, "PingFang SC", sans-serif;
+    color: var(--fog); margin-left: 8px; letter-spacing: .04em;
+  }
+  #search {
+    flex: 1; max-width: 380px;
+    padding: 7px 12px;
+    background: var(--slate); color: var(--cloud);
+    border: 1px solid var(--steel); border-radius: var(--r-sm);
+    font: inherit; font-size: 12.5px; outline: none;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  #search:focus {
+    border-color: var(--cobalt);
+    box-shadow: 0 0 0 3px var(--cobalt-soft);
+  }
+  #search::placeholder { color: var(--ash); }
+
+  .seg {
+    display: flex; border: 1px solid var(--steel);
+    border-radius: var(--r-sm); overflow: hidden;
+  }
+  .seg button {
+    padding: 6px 13px; background: transparent;
+    color: var(--fog); border: 0;
+    font: inherit; font-size: 11.5px; cursor: pointer;
+    transition: all .12s;
+  }
+  .seg button + button { border-left: 1px solid var(--steel); }
+  .seg button.on { background: var(--panel); color: var(--cloud); }
+  .seg button:hover:not(.on) { color: var(--mist); }
+
+  .stats { color: var(--ash); font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+  /* ── two-column shell ── */
+  .shell { display: flex; height: calc(100vh - 50px); }
+
+  nav {
+    width: 154px; flex: none;
+    padding: 14px 8px;
+    border-right: 1px solid var(--steel);
+    overflow-y: auto;
+  }
+  nav .sec {
+    font-size: 10px; font-weight: 500; color: var(--ash);
+    padding: 4px 10px 6px; letter-spacing: .08em;
+    text-transform: uppercase;
+  }
+  nav a {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 6px 10px; margin-bottom: 1px;
+    border-radius: 6px; color: var(--fog);
+    text-decoration: none; font-size: 12.5px; cursor: pointer;
+    transition: all .1s;
+  }
+  nav a:hover { background: var(--panel); color: var(--mist); }
+  nav a.on { background: var(--cobalt-soft); color: var(--cobalt); }
+  nav a .n { font-size: 10px; opacity: .5; font-variant-numeric: tabular-nums; }
+
+  #content {
+    flex: 1; min-width: 0;
+    height: 100%; overflow-y: auto;
+    padding: 22px 26px 80px;
+    max-width: 860px;
+  }
+
+  /* ── quick-copy bar ── */
+  .quick { margin-bottom: 26px; }
+  .quick h2 {
+    font-size: 11px; font-weight: 500; color: var(--ash);
+    margin-bottom: 8px; letter-spacing: .05em;
+  }
+  .quick-grid { display: flex; flex-wrap: wrap; gap: 5px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 9px;
+    background: var(--slate); border: 1px solid var(--steel);
+    border-radius: var(--r-sm); font-size: 11.5px;
+    cursor: pointer; transition: all .12s;
+  }
+  .chip:hover { border-color: var(--cobalt-border); background: var(--cobalt-soft); }
+  .chip b { color: var(--ash); font-weight: 400; }
+  .chip span { color: var(--mist); }
+
+  /* ── section dividers ── */
+  .group-title {
+    margin: 30px 0 12px;
+    font: 500 12px/1 "Noto Serif SC", serif;
+    color: var(--fog); letter-spacing: .08em;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .group-title::after {
+    content: ''; flex: 1; height: 1px;
+    background: linear-gradient(90deg, var(--steel) 0%, transparent 100%);
+  }
+  .group-title:first-of-type { margin-top: 0; }
+
+  /* ── cards ── */
+  .card {
+    background: var(--slate);
+    border: 1px solid var(--steel);
+    border-radius: var(--r);
+    margin-bottom: 8px;
+    transition: border-color .15s;
+  }
+  .card:hover { border-color: var(--steel-hi); }
+
+  .card-head {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 12px 14px;
+    cursor: pointer; user-select: none;
+  }
+  .caret {
+    color: var(--ash); font-size: 9px;
+    width: 12px; flex: none; margin-top: 5px;
+    transition: transform .15s;
+  }
+  .card.closed .caret { transform: rotate(-90deg); }
+
+  .card-info { flex: 1; min-width: 0; }
+
+  .card-title {
+    font: 500 14.5px/1.45 "Noto Serif SC", "PingFang SC", serif;
+    color: var(--cloud);
+    cursor: copy;
+    border-radius: 3px;
+    transition: color .1s;
+  }
+  .card-title:hover {
+    color: var(--cobalt);
+  }
+
+  .card-subtitle {
+    font-size: 11.5px; color: var(--fog); margin-top: 2px;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+    line-height: 1.5;
+  }
+  .card-subtitle .sep { color: var(--ash); }
+
+  .tag {
+    padding: 2px 7px; border-radius: 4px; font-size: 10.5px;
+    white-space: nowrap; line-height: 1.5;
+  }
+  .tag-type {
+    background: var(--cobalt-soft); color: var(--cobalt);
+    border: 1px solid var(--cobalt-border);
+  }
+  .tag-period {
+    background: transparent; color: var(--ash);
+    border: 1px solid var(--steel);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .copy-all {
+    padding: 3px 8px; background: transparent; color: var(--ash);
+    border: 1px solid transparent; border-radius: 4px;
+    font: inherit; font-size: 10.5px; cursor: pointer;
+    white-space: nowrap; opacity: 0; transition: all .15s;
+    flex: none; margin-top: 2px;
+  }
+  .card-head:hover .copy-all { opacity: 1; }
+  .copy-all:hover { color: var(--cobalt); border-color: var(--cobalt-border); }
+
+  .card-body { border-top: 1px solid var(--steel); }
+  .card.closed .card-body { display: none; }
+
+  /* ── metric chips ── */
+  .card-metrics {
+    display: flex; flex-wrap: wrap; gap: 5px;
+    padding: 9px 14px;
+    background: var(--ink);
+    border-bottom: 1px solid var(--steel);
+  }
+  .metric {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 9px;
+    background: var(--sage-soft);
+    border: 1px solid var(--sage-border); border-radius: 5px;
+    font-size: 11.5px; cursor: pointer;
+    transition: all .12s;
+    font-variant-numeric: tabular-nums;
+  }
+  .metric:hover { background: rgba(59,179,115,.16); }
+  .metric .ml { color: var(--sage); font-weight: 500; }
+  .metric .mv { color: var(--cloud); }
+
+  /* ── fact rows ── */
+  .fact-section { padding: 4px 0; }
+
+  .row {
+    display: flex; align-items: flex-start; gap: 6px;
+    padding: 6px 14px;
+    transition: background .1s;
+  }
+  .row:hover { background: var(--panel); }
+
+  .row .label {
+    width: 62px; flex: none; padding-top: 2px;
+    color: var(--ash); font-size: 11px;
+    text-align: right; line-height: 1.65;
+  }
+  .row .val {
+    flex: 1; white-space: pre-wrap; word-break: break-word;
+    font-size: 13px; line-height: 1.7;
+    color: var(--mist);
+    cursor: copy; border-radius: 3px;
+    transition: color .1s;
+  }
+  .row .val:hover { color: var(--cobalt); }
+  .row .val.long {
+    color: var(--cloud);
+    line-height: 1.8;
+    max-width: 40em;   /* 限制长文本行长，中文约 35–40 字/行更易读 */
+  }
+  .row .side {
+    display: flex; align-items: center; gap: 3px;
+    flex: none; margin-left: 10px;
+    padding-top: 1px;
+  }
+
+  .loc {
+    padding: 1px 5px; border-radius: 3px;
+    font-size: 10px; line-height: 1.4;
+    border: 1px solid transparent;
+  }
+  .loc.zh { color: var(--zh-color); border-color: var(--zh-border); background: var(--zh-bg); }
+  .loc.en { color: var(--en-color); border-color: var(--en-border); background: var(--en-bg); }
+  .loc.na { color: var(--ash); border-color: var(--steel); }
+
+  .btn {
+    padding: 1px 6px; background: transparent; color: var(--ash);
+    border: 1px solid var(--steel); border-radius: 4px;
+    font: inherit; font-size: 10.5px; cursor: pointer;
+    transition: all .1s;
+  }
+  .btn:hover { color: var(--cobalt); border-color: var(--cobalt-border); }
+  .btn.src:hover { color: var(--warn); border-color: rgba(224,160,64,.28); }
+
+  .srcs {
+    display: none; padding: 6px 14px 8px 82px;
+    background: var(--ink); border-bottom: 1px solid var(--steel);
+  }
+  .srcs.open { display: block; }
+  .srcs .s { margin: 3px 0; font-size: 11px; color: var(--fog); line-height: 1.5; }
+  .srcs .s b { color: var(--mist); font-weight: 400; }
+  .srcs .s i { color: var(--ash); font-style: normal; }
+
+  mark { background: rgba(74,144,255,.18); color: inherit; border-radius: 2px; padding: 0 1px; }
+
+  .empty { padding: 60px 40px; text-align: center; color: var(--ash); font-size: 13px; }
+
+  #toast {
+    position: fixed; bottom: 24px; left: 50%;
+    transform: translateX(-50%) translateY(8px);
+    padding: 8px 18px;
+    background: var(--panel); color: var(--cloud);
+    border: 1px solid var(--cobalt-border);
+    border-radius: var(--r-sm);
+    font-size: 12.5px; opacity: 0; pointer-events: none;
+    transition: all .18s; z-index: 50;
+    box-shadow: 0 6px 24px rgba(0,0,0,.5);
+  }
+  #toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--steel); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--steel-hi); }
+
+  /* ── narrow: split-screen / mobile ── */
+  @media (max-width: 780px) {
+    .shell { flex-direction: column; height: auto; }
+    nav {
+      width: 100%;
+      padding: 7px 12px;
+      border-right: none;
+      border-bottom: 1px solid var(--steel);
+      display: flex; gap: 4px;
+      overflow-x: auto;
+      overflow-y: hidden;
+      scrollbar-width: none;
+      position: sticky; top: 50px; z-index: 15;
+      background: var(--header-bg);
+      backdrop-filter: blur(14px) saturate(1.4);
+      -webkit-backdrop-filter: blur(14px) saturate(1.4);
+    }
+    nav::-webkit-scrollbar { display: none; }
+    nav .sec { display: none; }
+    nav a {
+      flex: none;
+      padding: 4px 10px;
+      font-size: 12px;
+      white-space: nowrap;
+      margin-bottom: 0;
+      gap: 5px;
+    }
+    #content {
+      height: auto; max-width: none;
+      padding: 16px 14px 60px;
+      overflow-y: visible;
+    }
+    .card-head { flex-wrap: wrap; padding: 11px 12px; }
+    .card-info { flex-basis: calc(100% - 20px); }
+    .copy-all { opacity: 1; margin-top: 0; margin-left: auto; }
+    .card-metrics { padding: 8px 12px; }
+    .row { padding: 5px 12px; }
+    .srcs { padding: 6px 12px 8px 74px; }
+  }
+
+  @media (max-width: 560px) {
+    header {
+      height: auto; min-height: 46px;
+      padding: 8px 12px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .brand small { display: none; }
+    #search {
+      order: 5; max-width: none;
+      flex: 1 1 100%;
+      padding: 6px 11px;
+    }
+    .stats { display: none; }
+    .seg button { padding: 5px 10px; font-size: 11px; }
+    nav { top: auto; }
+    .quick h2 { margin-bottom: 6px; }
+    .quick { margin-bottom: 18px; }
+    .card-title { font-size: 14px; }
+    .card-subtitle { font-size: 11px; }
+    .row .label { width: 48px; font-size: 10.5px; }
+    .row .val { font-size: 12.5px; }
+    .srcs { padding: 6px 12px 8px 60px; }
+  }
+
+  @media (max-width: 380px) {
+    .row { flex-direction: column; align-items: stretch; gap: 2px; padding: 6px 12px; }
+    .row .label { width: auto; text-align: left; padding-top: 0; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
+    .row .side { align-self: flex-end; }
+    .srcs { padding-left: 12px; }
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --ink: #f4f5f8;
+      --slate: #ffffff;
+      --panel: #f0f1f5;
+      --panel-hi: #e8e9ef;
+      --steel: #d8dbe3;
+      --steel-hi: #c4c8d4;
+      --cloud: #1a1e2a;
+      --mist: #3d4560;
+      --fog: #6a7290;
+      --ash: #9098b0;
+      --cobalt: #2563eb;
+      --cobalt-soft: rgba(37,99,235,.07);
+      --cobalt-border: rgba(37,99,235,.2);
+      --cobalt-glow: rgba(37,99,235,.04);
+      --sage: #16a34a;
+      --sage-soft: rgba(22,163,74,.07);
+      --sage-border: rgba(22,163,74,.18);
+      --zh-color: #2563eb;
+      --zh-bg: rgba(37,99,235,.06);
+      --zh-border: rgba(37,99,235,.15);
+      --en-color: #9333ea;
+      --en-bg: rgba(147,51,234,.06);
+      --en-border: rgba(147,51,234,.15);
+      --warn: #ca8a04;
+      --header-bg: rgba(244,245,248,.82);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ink: #0d1017;
+    --slate: #151a24;
+    --panel: #1a2030;
+    --panel-hi: #212838;
+    --steel: #2a3348;
+    --steel-hi: #3a4560;
+    --cloud: #dce1ec;
+    --mist: #a0a9be;
+    --fog: #6b7690;
+    --ash: #454f66;
+    --cobalt: #4a90ff;
+    --cobalt-soft: rgba(74,144,255,.1);
+    --cobalt-border: rgba(74,144,255,.22);
+    --sage: #3bb373;
+    --sage-soft: rgba(59,179,115,.1);
+    --sage-border: rgba(59,179,115,.22);
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">个人资料库<small>网申速查</small></div>
+  <input id="search" type="search" placeholder="搜索内容、机构、关键词…  ⌘K" autocomplete="off">
+  <div class="seg" id="localeSeg">
+    <button data-loc="all" class="on">全部</button>
+    <button data-loc="zh">中文</button>
+    <button data-loc="en">English</button>
+  </div>
+  <div class="stats" id="count"></div>
+</header>
+
+<div class="shell">
+  <nav id="nav"></nav>
+  <div id="content"></div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const state = { data: null, query: '', locale: 'all', type: 'all' };
+
+const esc = s => String(s).replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function hl(text) {
+  const safe = esc(text);
+  if (!state.query) return safe;
+  const q = state.query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return safe.replace(new RegExp(q, 'gi'), m => `<mark>${m}</mark>`);
+}
+
+async function copy(text, label) {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast(label ? `已复制 · ${label}` : '已复制');
+  } catch {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); ta.remove();
+    toast(label ? `已复制 · ${label}` : '已复制');
+  }
+}
+
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('on'), 1400);
+}
+
+function locClass(l) { return !l ? 'na' : l.startsWith('zh') ? 'zh' : 'en'; }
+function locText(l) { return !l ? '通用' : l.startsWith('zh') ? '中' : 'EN'; }
+
+const HIDDEN_FIELDS = new Set([
+  'experience.type','experience.title','skill.name','skill.category',
+  'award.name','education.institution',
+  'education.startDate','education.endDate',
+  'experience.startDate','experience.endDate',
+  'award.date','award.issuer','skill.level',
+  // 作品/论文题目已提为卡片主标题，不再重复成一行
+  'experience.fact.topic',
+]);
+
+// 卡片主标题：科研/项目类经历优先用作品或论文题目（填表第一格要的就是它），
+// 没有题目时回退到实体名（论文标题本身、机构名或竞赛名）。
+function cardName(e) {
+  if (e.type === 'experience') {
+    const topic = e.facts.find(f => f.field === 'experience.fact.topic');
+    if (topic && topic.value) return topic.value;
+  }
+  return e.name;
+}
+
+const SUBTITLE_FIELDS = new Set([
+  'education.degree','education.major','education.minor','education.location',
+  'experience.organization','experience.role',
+]);
+
+const METRIC_FIELDS = new Set([
+  'education.gpa','education.averageScore','education.ranking',
+]);
+
+// 这些个人字段已由顶部「常用速查」整条覆盖，默认视图下不再在个人卡里重复一遍
+const PERSON_CHIP_FIELDS = new Set([
+  'person.fullName.zhCN','person.fullName.en',
+  'person.fullName.familyNameEn','person.fullName.givenNameEn',
+  'person.contact.email','person.contact.phone',
+  'person.location.currentCity',
+]);
+
+// 速查条只在「全部 + 无搜索」时出现；此时才隐藏个人卡里的重复字段
+function chipsShown() { return state.type === 'all' && !state.query; }
+
+function isLong(field) {
+  if (field === 'award.details' || field === 'skill.details') return true;
+  return field.startsWith('experience.fact.');
+}
+
+function visibleFacts(entity) {
+  return entity.facts.filter(f => {
+    if (HIDDEN_FIELDS.has(f.field)) return false;
+    if (state.locale === 'zh' && f.locale && !f.locale.startsWith('zh')) return false;
+    if (state.locale === 'en' && f.locale && f.locale.startsWith('zh')) return false;
+    // 机构 / 角色 已进副标题，任何语言版本都不再重复成正文行
+    if (SUBTITLE_FIELDS.has(f.field)) return false;
+    // 个人信息与速查条重复：速查条在场时不再重复
+    if (entity.type === 'person' && chipsShown() && PERSON_CHIP_FIELDS.has(f.field)) return false;
+    return true;
+  });
+}
+
+function matches(entity) {
+  if (!state.query) return true;
+  const q = state.query.toLowerCase();
+  if (entity.name.toLowerCase().includes(q)) return true;
+  return entity.facts.some(f => (f.value + f.label).toLowerCase().includes(q));
+}
+
+function quickChips() {
+  const person = state.data.entities.find(e => e.type === 'person');
+  if (!person) return '';
+  const keys = [
+    'person.fullName.zhCN','person.fullName.en',
+    'person.fullName.familyNameEn','person.fullName.givenNameEn',
+    'person.contact.email','person.contact.phone',
+    'person.location.currentCity',
+  ];
+  const chips = [];
+  for (const k of keys) {
+    const f = person.facts.find(x => x.field === k);
+    if (f) chips.push(`<div class="chip" data-copy="${encodeURIComponent(f.value)}" data-label="${esc(f.label)}"><b>${f.label}</b><span>${esc(f.value)}</span></div>`);
+  }
+  // 同名院校（主修 / 辅修）在速查条里要区分开，否则两个「吉林大学 GPA」分不清
+  const eduEntities = state.data.entities.filter(x => x.type === 'education');
+  const nameCount = {};
+  eduEntities.forEach(x => { nameCount[x.name] = (nameCount[x.name] || 0) + 1; });
+  for (const e of eduEntities) {
+    const majorFact = e.facts.find(x => x.field === 'education.major' && x.locale && x.locale.startsWith('zh'))
+      || e.facts.find(x => x.field === 'education.major');
+    const isMinor = majorFact && /辅修|minor/i.test(majorFact.value);
+    const school = nameCount[e.name] > 1 ? `${e.name}·${isMinor ? '辅修' : '主修'}` : e.name;
+    for (const k of ['education.gpa','education.averageScore','education.ranking']) {
+      const f = e.facts.find(x => x.field === k);
+      if (f) {
+        const short = f.value.split('（')[0].split('(')[0].trim();
+        chips.push(`<div class="chip" data-copy="${encodeURIComponent(f.value)}" data-label="${esc(school)} ${f.label}"><b>${esc(school)} ${f.label}</b><span>${esc(short)}</span></div>`);
+      }
+    }
+  }
+  if (!chips.length) return '';
+  return `<div class="quick"><h2>常用速查 · 点击复制</h2><div class="quick-grid">${chips.join('')}</div></div>`;
+}
+
+function renderNav() {
+  const groups = [...new Set(state.data.entities.map(e => e.group))];
+  const counts = {};
+  state.data.entities.forEach(e => { counts[e.group] = (counts[e.group] || 0) + 1; });
+  let html = `<div class="sec">分类</div>`;
+  html += `<a data-type="all" class="${state.type === 'all' ? 'on' : ''}">全部<span class="n">${state.data.entities.length}</span></a>`;
+  groups.forEach(g => {
+    html += `<a data-type="${esc(g)}" class="${state.type === g ? 'on' : ''}">${esc(g)}<span class="n">${counts[g]}</span></a>`;
+  });
+  document.getElementById('nav').innerHTML = html;
+}
+
+function buildSubtitle(e) {
+  const title = cardName(e);
+  const parts = [];
+  const get = field => { const f = e.facts.find(x => x.field === field); return f ? f.value : null; };
+  if (e.type === 'education') {
+    const deg = get('education.degree'), major = get('education.major'), loc = get('education.location');
+    if (deg) parts.push(deg);
+    if (major) parts.push(major);
+    if (loc) parts.push(loc);
+  } else if (e.type === 'experience') {
+    const role = get('experience.role');
+    if (role) parts.push(role);
+    // 主标题已换成作品/论文题目时，把竞赛名 / 机构名收进副标题，别丢
+    if (e.name && e.name !== title) parts.push(e.name);
+    const org = get('experience.organization');
+    if (org && org !== e.name) parts.push(org);
+  } else if (e.type === 'skill') {
+    const level = get('skill.level');
+    if (level) parts.push(level);
+  } else if (e.type === 'award') {
+    const issuer = get('award.issuer');
+    if (issuer) parts.push(issuer);
+  }
+  const zhParts = parts.map(part => {
+    const fact = e.facts.find(f => f.value === part);
+    if (!fact) return part;
+    const zh = e.facts.find(f => f.field === fact.field && f.locale && f.locale.startsWith('zh'));
+    return zh ? zh.value : part;
+  }).filter(p => p !== title);
+  return zhParts.length ? zhParts.map(p => esc(p)).join('<span class="sep"> · </span>') : '';
+}
+
+function buildPeriod(e) {
+  if (!e.start) return '';
+  const end = e.facts.find(f => f.field === 'education.endDate' || f.field === 'experience.endDate');
+  return end ? `${e.start} – ${end.value}` : e.start;
+}
+
+function buildMetrics(e, facts) {
+  const metrics = facts.filter(f => METRIC_FIELDS.has(f.field));
+  if (!metrics.length) return '';
+  const byField = {};
+  metrics.forEach(f => { (byField[f.field] = byField[f.field] || []).push(f); });
+  const items = Object.entries(byField).map(([, group]) => {
+    const pick = group.find(f => f.locale && f.locale.startsWith('zh'))
+      || group.find(f => !f.locale) || group[0];
+    return `<span class="metric" data-copy="${encodeURIComponent(pick.value)}" data-label="${esc(e.name)} ${pick.label}"><span class="ml">${esc(pick.label)}</span><span class="mv">${esc(pick.value)}</span></span>`;
+  });
+  return `<div class="card-metrics">${items.join('')}</div>`;
+}
+
+function render() {
+  renderNav();
+  const entities = state.data.entities.filter(e =>
+    (state.type === 'all' || e.group === state.type) && matches(e)
+    // 仅当个人卡的字段已被顶部速查条完全覆盖（默认视图）时，才跳过它，连同分组标题。
+    // 注意：技能 / 教育 / 奖项等卡片的信息主要在标题+副标题里，正文行数为 0 也要照常显示。
+    && !(e.type === 'person' && visibleFacts(e).length === 0));
+
+  const shown = entities.reduce((n, e) => n + visibleFacts(e).length, 0);
+  document.getElementById('count').textContent = `${entities.length} 项 · ${shown} 条`;
+
+  if (!entities.length) {
+    document.getElementById('content').innerHTML = '<div class="empty">没有匹配的内容</div>';
+    return;
+  }
+
+  let html = state.type === 'all' && !state.query ? quickChips() : '';
+  let lastGroup = null;
+
+  for (const e of entities) {
+    if (e.group !== lastGroup) {
+      html += `<div class="group-title">${esc(e.group)}</div>`;
+      lastGroup = e.group;
+    }
+    const facts = visibleFacts(e);
+    const zhFacts = facts.filter(f => !f.locale || f.locale.startsWith('zh'));
+    const allText = (zhFacts.length ? zhFacts : facts).map(f => f.value).join('\n');
+    const title = cardName(e);
+    const subtitle = buildSubtitle(e);
+    const period = buildPeriod(e);
+
+    html += `<div class="card" data-id="${esc(e.id)}">
+      <div class="card-head">
+        <span class="caret">▾</span>
+        <div class="card-info">
+          <div class="card-title" data-copy="${encodeURIComponent(title)}" data-label="名称">${hl(title)}</div>
+          ${subtitle ? `<div class="card-subtitle">${subtitle}</div>` : ''}
+        </div>
+        ${e.subtype ? `<span class="tag tag-type">${esc(e.subtype)}</span>` : ''}
+        ${period ? `<span class="tag tag-period">${esc(period)}</span>` : ''}
+        <button class="copy-all" data-copy="${encodeURIComponent(allText)}" data-label="${esc(e.name)}">复制全文</button>
+      </div>
+      <div class="card-body">`;
+
+    html += buildMetrics(e, facts);
+
+    const rowFacts = facts.filter(f => !METRIC_FIELDS.has(f.field));
+    if (rowFacts.length) {
+      html += `<div class="fact-section">`;
+      for (const f of rowFacts) {
+        const srcKey = e.id + '|' + f.id;
+        html += `<div class="row">
+          <span class="label">${esc(f.label)}</span>
+          <span class="val${isLong(f.field) ? ' long' : ''}" data-copy="${encodeURIComponent(f.value)}" data-label="${esc(f.label)}" title="点击复制">${hl(f.value)}</span>
+          <span class="side">
+            <span class="loc ${locClass(f.locale)}">${locText(f.locale)}</span>
+            ${f.sources.length ? `<button class="btn src" data-src="${esc(srcKey)}">${f.sources.length}证</button>` : ''}
+          </span>
+        </div>`;
+        if (f.sources.length) {
+          html += `<div class="srcs" data-srcbox="${esc(srcKey)}">
+            ${f.sources.map(s => `<div class="s"><b>${esc(s.file)}</b> <i>${esc(s.type)}</i><br>${esc(s.excerpt)}</div>`).join('')}
+          </div>`;
+        }
+      }
+      html += `</div>`;
+    }
+    html += `</div></div>`;
+  }
+  document.getElementById('content').innerHTML = html;
+}
+
+document.addEventListener('click', ev => {
+  const nav = ev.target.closest('#nav a');
+  if (nav) { state.type = nav.dataset.type; render(); return; }
+
+  // title click → copy name
+  const titleEl = ev.target.closest('.card-title');
+  if (titleEl && titleEl.dataset.copy) {
+    copy(decodeURIComponent(titleEl.dataset.copy), titleEl.dataset.label || '');
+    return;
+  }
+
+  // card head click (not on title, not on button) → toggle
+  const head = ev.target.closest('.card-head');
+  if (head && !ev.target.closest('button') && !ev.target.closest('[data-copy]')) {
+    head.parentElement.classList.toggle('closed');
+    return;
+  }
+
+  const srcBtn = ev.target.closest('[data-src]');
+  if (srcBtn) {
+    const box = document.querySelector(`.srcs[data-srcbox="${CSS.escape(srcBtn.dataset.src)}"]`);
+    if (box) box.classList.toggle('open');
+    return;
+  }
+
+  const copyEl = ev.target.closest('[data-copy]');
+  if (copyEl) copy(decodeURIComponent(copyEl.dataset.copy), copyEl.dataset.label || '');
+});
+
+document.getElementById('search').addEventListener('input', ev => {
+  state.query = ev.target.value.trim();
+  render();
+});
+
+document.getElementById('localeSeg').addEventListener('click', ev => {
+  const btn = ev.target.closest('button');
+  if (!btn) return;
+  [...ev.currentTarget.children].forEach(b => b.classList.toggle('on', b === btn));
+  state.locale = btn.dataset.loc;
+  render();
+});
+
+document.addEventListener('keydown', ev => {
+  if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 'k') {
+    ev.preventDefault();
+    document.getElementById('search').focus();
+  }
+});
+
+fetch('/api/profile')
+  .then(r => r.json())
+  .then(data => {
+    if (data.error) {
+      document.getElementById('content').innerHTML = `<div class="empty">读取失败：${esc(data.error)}</div>`;
+      return;
+    }
+    state.data = data;
+    render();
+  })
+  .catch(err => {
+    document.getElementById('content').innerHTML = `<div class="empty">读取失败：${esc(err.message)}</div>`;
+  });
+</script>
+</body>
+</html>

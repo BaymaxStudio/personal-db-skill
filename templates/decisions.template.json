@@ -1,0 +1,18 @@
+{
+  "_说明": "人工决定文件模板。放到 review/decisions-<批次名>.json，批次名要和对应的 candidates 文件一致。每个 candidateId 对应一个决定：accept 采纳 / reject 拒绝 / replace 用 replacementValue 覆盖后采纳。只有本人（用户）拍板后才写这个文件。",
+  "decisionVersion": "1.0.0",
+  "decidedBy": "用户名",
+  "decidedAt": "YYYY-MM-DDThh:mm:ssZ",
+  "decisions": [
+    {
+      "candidateId": "candidate.person.owner.fullName.zhCN.001",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "candidate.education.bachelor.institution.001",
+      "action": "replace",
+      "replacementValue": "示例大学（修正后的正式全称）"
+    }
+  ]
+}

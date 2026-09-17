@@ -1,0 +1,49 @@
+{
+  "_说明": "候选事实文件模板。放到 staging/candidates-<批次名>.json。每条候选都必须有来源；来源文件必须在 materials/ 目录内。md/html/txt 来源的 excerpt 必须逐字出现在文件里。写完用 `python3 career_profile.py validate-candidates <本文件>` 校验。",
+  "candidateVersion": "1.0.0",
+  "generatedAt": "YYYY-MM-DDThh:mm:ssZ",
+  "sources": [
+    {
+      "sourceId": "evidence.resume",
+      "absolutePath": "/绝对路径/到/你的项目/materials/简历.pdf",
+      "documentType": "pdf",
+      "sha256": "用 shasum -a 256 <文件> 得到的 64 位小写十六进制"
+    }
+  ],
+  "candidates": [
+    {
+      "candidateId": "candidate.person.owner.fullName.zhCN.001",
+      "entityType": "person",
+      "entityKey": "person.owner",
+      "fieldPath": "person.fullName.zhCN",
+      "proposedValue": "张三",
+      "locale": "zh-CN",
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "evidence.resume",
+          "locator": "第1页 页眉",
+          "excerpt": "张三"
+        }
+      ]
+    },
+    {
+      "candidateId": "candidate.education.bachelor.institution.001",
+      "entityType": "education",
+      "entityKey": "education.bachelor",
+      "fieldPath": "education.institution",
+      "proposedValue": "示例大学",
+      "locale": "zh-CN",
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "evidence.resume",
+          "locator": "第1页 教育经历",
+          "excerpt": "示例大学"
+        }
+      ]
+    }
+  ]
+}
