@@ -1,0 +1,15 @@
+{
+  "_说明": "复制为 viewer-config.json 后生效（该文件不进 Git）。用来给个人专属的内容加分区、字段显示名和排序，改完刷新页面即可。",
+  "extraSections": [
+    {"id": "hobby", "label": "兴趣爱好", "en": "Hobbies", "before": "reference"}
+  ],
+  "sectionPrefixes": {
+    "experience.hobby-": "hobby"
+  },
+  "fieldLabels": {
+    "experience.fact.marathon": "马拉松成绩"
+  },
+  "fieldPriority": {
+    "experience.fact.marathon": 5
+  }
+}
