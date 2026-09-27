@@ -1,30 +1,656 @@
 {
-  "_说明": "端到端回归用的候选样例（内容全部虚构）。tests/run_e2e.sh 会把 __PROJECT_ROOT__ 与 __SHA256__ 替换成真实路径与哈希后写入临时项目。",
+  "_说明": "端到端回归用的候选样例（内容全部虚构）。tests/run_e2e.sh 会把 __PROJECT_ROOT__ 与各个 __SHA_*__ 替换成真实路径与哈希后写入临时项目。",
   "candidateVersion": "1.0.0",
-  "generatedAt": "2026-09-17T00:00:00Z",
+  "generatedAt": "2026-09-27T00:00:00Z",
   "sources": [
     {
-      "sourceId": "evidence.demo",
+      "sourceId": "source.resume.demo",
       "absolutePath": "__PROJECT_ROOT__/materials/demo-material.txt",
       "documentType": "txt",
-      "sha256": "__SHA256__"
+      "sha256": "__SHA_RESUME__"
+    },
+    {
+      "sourceId": "evidence.transcript-demo",
+      "absolutePath": "__PROJECT_ROOT__/materials/demo-transcript.txt",
+      "documentType": "txt",
+      "sha256": "__SHA_TRANSCRIPT__"
+    },
+    {
+      "sourceId": "supplement.statement-demo",
+      "absolutePath": "__PROJECT_ROOT__/materials/demo-self-statement.md",
+      "documentType": "md",
+      "sha256": "__SHA_STATEMENT__"
     }
   ],
   "candidates": [
-    { "candidateId": "c.person.name", "entityType": "person", "entityKey": "person.owner", "fieldPath": "person.fullName.zhCN", "proposedValue": "张三", "locale": "zh-CN", "status": "pending", "conflictGroupId": null, "sourceRefs": [{ "sourceId": "evidence.demo", "locator": "第3行", "excerpt": "张三" }] },
-    { "candidateId": "c.person.name.en", "entityType": "person", "entityKey": "person.owner", "fieldPath": "person.fullName.en", "proposedValue": "Zhang San", "locale": "en", "status": "pending", "conflictGroupId": null, "sourceRefs": [{ "sourceId": "evidence.demo", "locator": "第3行", "excerpt": "Zhang San" }] },
-    { "candidateId": "c.person.email", "entityType": "person", "entityKey": "person.owner", "fieldPath": "person.contact.email", "proposedValue": "zhangsan@example.com", "locale": null, "status": "pending", "conflictGroupId": null, "sourceRefs": [{ "sourceId": "evidence.demo", "locator": "第4行", "excerpt": "zhangsan@example.com" }] },
-    { "candidateId": "c.edu.institution", "entityType": "education", "entityKey": "education.bachelor", "fieldPath": "education.institution", "proposedValue": "示例大学", "locale": "zh-CN", "status": "pending", "conflictGroupId": null, "sourceRefs": [{ "sourceId": "evidence.demo", "locator": "第7行", "excerpt": "示例大学" }] },
-    { "candidateId": "c.edu.degree", "entityType": "education", "entityKey": "education.bachelor", "fieldPath": "education.degree", "proposedValue": "本科", "locale": "zh-CN", "status": "pending", "conflictGroupId": null, "sourceRefs": [{ "sourceId": "evidence.demo", "locator": "第7行", "excerpt": "本科" }] },
-    { "candidateId": "c.edu.major", "entityType": "education", "entityKey": "education.bachelor", "fieldPath": "education.major", "proposedValue": "计算机科学与技术", "locale": "zh-CN", "status": "pending", "conflictGroupId": null, "sourceRefs": [{ "sourceId": "evidence.demo", "locator": "第7行", "excerpt": "计算机科学与技术" }] },
-    { "candidateId": "c.edu.gpa", "entityType": "education", "entityKey": "education.bachelor", "fieldPath": "education.gpa", "proposedValue": "3.8/4.0", "locale": null, "status": "pending", "conflictGroupId": null, "sourceRefs": [{ "sourceId": "evidence.demo", "locator": "第8行", "excerpt": "3.8/4.0" }] },
-    { "candidateId": "c.exp.type", "entityType": "experience", "entityKey": "experience.intern-demo", "fieldPath": "experience.type", "proposedValue": "professional", "locale": null, "status": "pending", "conflictGroupId": null, "sourceRefs": [{ "sourceId": "evidence.demo", "locator": "第11行", "excerpt": "实习经历" }] },
-    { "candidateId": "c.exp.org", "entityType": "experience", "entityKey": "experience.intern-demo", "fieldPath": "experience.organization", "proposedValue": "示例科技", "locale": "zh-CN", "status": "pending", "conflictGroupId": null, "sourceRefs": [{ "sourceId": "evidence.demo", "locator": "第12行", "excerpt": "示例科技" }] },
-    { "candidateId": "c.exp.title", "entityType": "experience", "entityKey": "experience.intern-demo", "fieldPath": "experience.title", "proposedValue": "数据分析实习生", "locale": "zh-CN", "status": "pending", "conflictGroupId": null, "sourceRefs": [{ "sourceId": "evidence.demo", "locator": "第12行", "excerpt": "数据分析实习生" }] },
-    { "candidateId": "c.exp.overview", "entityType": "experience", "entityKey": "experience.intern-demo", "fieldPath": "experience.fact.overview", "proposedValue": "负责用户留存分析，每周产出留存周报。", "locale": "zh-CN", "status": "pending", "conflictGroupId": null, "sourceRefs": [{ "sourceId": "evidence.demo", "locator": "第13行", "excerpt": "负责用户留存分析" }] },
-    { "candidateId": "c.skill.category", "entityType": "skill", "entityKey": "skill.python", "fieldPath": "skill.category", "proposedValue": "technical", "locale": null, "status": "pending", "conflictGroupId": null, "sourceRefs": [{ "sourceId": "evidence.demo", "locator": "第16行", "excerpt": "技能" }] },
-    { "candidateId": "c.skill.name", "entityType": "skill", "entityKey": "skill.python", "fieldPath": "skill.name", "proposedValue": "Python", "locale": null, "status": "pending", "conflictGroupId": null, "sourceRefs": [{ "sourceId": "evidence.demo", "locator": "第16行", "excerpt": "Python" }] },
-    { "candidateId": "c.skill.level", "entityType": "skill", "entityKey": "skill.python", "fieldPath": "skill.level", "proposedValue": "熟练", "locale": "zh-CN", "status": "pending", "conflictGroupId": null, "sourceRefs": [{ "sourceId": "evidence.demo", "locator": "第16行", "excerpt": "熟练" }] },
-    { "candidateId": "c.award.name", "entityType": "award", "entityKey": "award.scholarship-demo", "fieldPath": "award.name", "proposedValue": "示例大学一等奖学金", "locale": "zh-CN", "status": "pending", "conflictGroupId": null, "sourceRefs": [{ "sourceId": "evidence.demo", "locator": "第19行", "excerpt": "示例大学一等奖学金" }] }
+    {
+      "candidateId": "c.person.name",
+      "entityType": "person",
+      "entityKey": "person.owner",
+      "fieldPath": "person.fullName.zhCN",
+      "proposedValue": "张三",
+      "locale": "zh-CN",
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "source.resume.demo",
+          "locator": "个人信息",
+          "excerpt": "张三"
+        }
+      ]
+    },
+    {
+      "candidateId": "c.person.name.en",
+      "entityType": "person",
+      "entityKey": "person.owner",
+      "fieldPath": "person.fullName.en",
+      "proposedValue": "Zhang San",
+      "locale": "en",
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "source.resume.demo",
+          "locator": "个人信息",
+          "excerpt": "Zhang San"
+        }
+      ]
+    },
+    {
+      "candidateId": "c.person.email",
+      "entityType": "person",
+      "entityKey": "person.owner",
+      "fieldPath": "person.contact.email",
+      "proposedValue": "zhangsan@example.com",
+      "locale": null,
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "source.resume.demo",
+          "locator": "个人信息",
+          "excerpt": "zhangsan@example.com"
+        }
+      ]
+    },
+    {
+      "candidateId": "c.person.phone",
+      "entityType": "person",
+      "entityKey": "person.owner",
+      "fieldPath": "person.contact.phone",
+      "proposedValue": "+86 138-0000-0000",
+      "locale": null,
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "source.resume.demo",
+          "locator": "个人信息",
+          "excerpt": "电话：+86 138-0000-0000"
+        }
+      ]
+    },
+    {
+      "candidateId": "c.person.city",
+      "entityType": "person",
+      "entityKey": "person.owner",
+      "fieldPath": "person.location.currentCity",
+      "proposedValue": "上海",
+      "locale": "zh-CN",
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "source.resume.demo",
+          "locator": "个人信息",
+          "excerpt": "现居城市：上海"
+        }
+      ]
+    },
+    {
+      "candidateId": "c.edu.institution",
+      "entityType": "education",
+      "entityKey": "education.bachelor",
+      "fieldPath": "education.institution",
+      "proposedValue": "示例大学",
+      "locale": "zh-CN",
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "source.resume.demo",
+          "locator": "教育经历",
+          "excerpt": "示例大学"
+        }
+      ]
+    },
+    {
+      "candidateId": "c.edu.degree",
+      "entityType": "education",
+      "entityKey": "education.bachelor",
+      "fieldPath": "education.degree",
+      "proposedValue": "本科",
+      "locale": "zh-CN",
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "source.resume.demo",
+          "locator": "教育经历",
+          "excerpt": "本科"
+        }
+      ]
+    },
+    {
+      "candidateId": "c.edu.major",
+      "entityType": "education",
+      "entityKey": "education.bachelor",
+      "fieldPath": "education.major",
+      "proposedValue": "计算机科学与技术",
+      "locale": "zh-CN",
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "source.resume.demo",
+          "locator": "教育经历",
+          "excerpt": "计算机科学与技术"
+        }
+      ]
+    },
+    {
+      "candidateId": "c.edu.start",
+      "entityType": "education",
+      "entityKey": "education.bachelor",
+      "fieldPath": "education.startDate",
+      "proposedValue": "2018-09",
+      "locale": null,
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "source.resume.demo",
+          "locator": "教育经历",
+          "excerpt": "2018-09 — 2022-06"
+        }
+      ]
+    },
+    {
+      "candidateId": "c.edu.end",
+      "entityType": "education",
+      "entityKey": "education.bachelor",
+      "fieldPath": "education.endDate",
+      "proposedValue": "2022-06",
+      "locale": null,
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "source.resume.demo",
+          "locator": "教育经历",
+          "excerpt": "2018-09 — 2022-06"
+        }
+      ]
+    },
+    {
+      "candidateId": "c.edu.gpa",
+      "entityType": "education",
+      "entityKey": "education.bachelor",
+      "fieldPath": "education.gpa",
+      "proposedValue": "3.8/4.0",
+      "locale": null,
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "source.resume.demo",
+          "locator": "教育经历",
+          "excerpt": "3.8/4.0"
+        }
+      ]
+    },
+    {
+      "candidateId": "c.edu.avg",
+      "entityType": "education",
+      "entityKey": "education.bachelor",
+      "fieldPath": "education.averageScore",
+      "proposedValue": "89.6/100",
+      "locale": null,
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "evidence.transcript-demo",
+          "locator": "成绩单页眉",
+          "excerpt": "加权平均分：89.6/100"
+        }
+      ]
+    },
+    {
+      "candidateId": "c.edu.rank",
+      "entityType": "education",
+      "entityKey": "education.bachelor",
+      "fieldPath": "education.ranking",
+      "proposedValue": "5/120",
+      "locale": null,
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "evidence.transcript-demo",
+          "locator": "成绩单页眉",
+          "excerpt": "专业排名：5/120"
+        }
+      ]
+    },
+    {
+      "candidateId": "c.exp.type",
+      "entityType": "experience",
+      "entityKey": "experience.intern-demo",
+      "fieldPath": "experience.type",
+      "proposedValue": "professional",
+      "locale": null,
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "source.resume.demo",
+          "locator": "实习经历",
+          "excerpt": "实习经历"
+        }
+      ]
+    },
+    {
+      "candidateId": "c.exp.org",
+      "entityType": "experience",
+      "entityKey": "experience.intern-demo",
+      "fieldPath": "experience.organization",
+      "proposedValue": "示例科技",
+      "locale": "zh-CN",
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "source.resume.demo",
+          "locator": "实习经历",
+          "excerpt": "示例科技"
+        }
+      ]
+    },
+    {
+      "candidateId": "c.exp.title",
+      "entityType": "experience",
+      "entityKey": "experience.intern-demo",
+      "fieldPath": "experience.title",
+      "proposedValue": "数据分析实习生",
+      "locale": "zh-CN",
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "source.resume.demo",
+          "locator": "实习经历",
+          "excerpt": "数据分析实习生"
+        }
+      ]
+    },
+    {
+      "candidateId": "c.exp.start",
+      "entityType": "experience",
+      "entityKey": "experience.intern-demo",
+      "fieldPath": "experience.startDate",
+      "proposedValue": "2021-07",
+      "locale": null,
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "source.resume.demo",
+          "locator": "实习经历",
+          "excerpt": "2021-07 — 2021-09"
+        }
+      ]
+    },
+    {
+      "candidateId": "c.exp.end",
+      "entityType": "experience",
+      "entityKey": "experience.intern-demo",
+      "fieldPath": "experience.endDate",
+      "proposedValue": "2021-09",
+      "locale": null,
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "source.resume.demo",
+          "locator": "实习经历",
+          "excerpt": "2021-07 — 2021-09"
+        }
+      ]
+    },
+    {
+      "candidateId": "c.exp.overview",
+      "entityType": "experience",
+      "entityKey": "experience.intern-demo",
+      "fieldPath": "experience.fact.overview",
+      "proposedValue": "负责用户留存分析，每周产出留存周报。",
+      "locale": "zh-CN",
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "source.resume.demo",
+          "locator": "实习经历",
+          "excerpt": "负责用户留存分析"
+        }
+      ]
+    },
+    {
+      "candidateId": "c.exp.overview.en",
+      "entityType": "experience",
+      "entityKey": "experience.intern-demo",
+      "fieldPath": "experience.fact.overview",
+      "proposedValue": "Analyzed user retention and delivered weekly retention reports.",
+      "locale": "en",
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "source.resume.demo",
+          "locator": "实习经历",
+          "excerpt": "Analyzed user retention and delivered weekly retention reports."
+        }
+      ]
+    },
+    {
+      "candidateId": "c.research.type",
+      "entityType": "experience",
+      "entityKey": "experience.research-demo",
+      "fieldPath": "experience.type",
+      "proposedValue": "research",
+      "locale": null,
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "source.resume.demo",
+          "locator": "科研经历",
+          "excerpt": "科研经历"
+        }
+      ]
+    },
+    {
+      "candidateId": "c.research.title",
+      "entityType": "experience",
+      "entityKey": "experience.research-demo",
+      "fieldPath": "experience.title",
+      "proposedValue": "城市共享单车调度优化研究",
+      "locale": "zh-CN",
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "source.resume.demo",
+          "locator": "科研经历",
+          "excerpt": "城市共享单车调度优化研究"
+        }
+      ]
+    },
+    {
+      "candidateId": "c.research.role",
+      "entityType": "experience",
+      "entityKey": "experience.research-demo",
+      "fieldPath": "experience.role",
+      "proposedValue": "第一作者",
+      "locale": "zh-CN",
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "source.resume.demo",
+          "locator": "科研经历",
+          "excerpt": "（第一作者）"
+        }
+      ]
+    },
+    {
+      "candidateId": "c.research.start",
+      "entityType": "experience",
+      "entityKey": "experience.research-demo",
+      "fieldPath": "experience.startDate",
+      "proposedValue": "2020-09",
+      "locale": null,
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "source.resume.demo",
+          "locator": "科研经历",
+          "excerpt": "2020-09 — 2021-06"
+        }
+      ]
+    },
+    {
+      "candidateId": "c.research.end",
+      "entityType": "experience",
+      "entityKey": "experience.research-demo",
+      "fieldPath": "experience.endDate",
+      "proposedValue": "2021-06",
+      "locale": null,
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "source.resume.demo",
+          "locator": "科研经历",
+          "excerpt": "2020-09 — 2021-06"
+        }
+      ]
+    },
+    {
+      "candidateId": "c.research.overview",
+      "entityType": "experience",
+      "entityKey": "experience.research-demo",
+      "fieldPath": "experience.fact.overview",
+      "proposedValue": "项目以示例市 3 个行政区的 12 万条骑行订单为样本，先用聚类找出早晚高峰的潮汐站点，再建立带容量约束的车辆调度模型，比较三种补车策略的空桩率与调度里程。最终方案让高峰时段的空桩率从 18% 降到 11%，调度总里程减少约 15%。",
+      "locale": "zh-CN",
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "supplement.statement-demo",
+          "locator": "第2段",
+          "excerpt": "项目以示例市 3 个行政区的 12 万条骑行订单为样本，先用聚类找出早晚高峰的潮汐站点，再建立带容量约束的车辆调度模型，比较三种补车策略的空桩率与调度里程。最终方案让高峰时段的空桩率从 18% 降到 11%，调度总里程减少约 15%。"
+        }
+      ]
+    },
+    {
+      "candidateId": "c.research.duty",
+      "entityType": "experience",
+      "entityKey": "experience.research-demo",
+      "fieldPath": "experience.fact.duty",
+      "proposedValue": "我负责数据清洗、模型搭建和研究报告主体章节的写作，另外两位同学负责实地调研和可视化。",
+      "locale": "zh-CN",
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "supplement.statement-demo",
+          "locator": "第3段",
+          "excerpt": "我负责数据清洗、模型搭建和研究报告主体章节的写作，另外两位同学负责实地调研和可视化。"
+        }
+      ]
+    },
+    {
+      "candidateId": "c.research.recognition",
+      "entityType": "experience",
+      "entityKey": "experience.research-demo",
+      "fieldPath": "experience.fact.recognition",
+      "proposedValue": "研究报告获校级大学生创新项目优秀结题。",
+      "locale": "zh-CN",
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "supplement.statement-demo",
+          "locator": "第4段",
+          "excerpt": "研究报告获校级大学生创新项目优秀结题。"
+        }
+      ]
+    },
+    {
+      "candidateId": "c.skill.category",
+      "entityType": "skill",
+      "entityKey": "skill.python",
+      "fieldPath": "skill.category",
+      "proposedValue": "technical",
+      "locale": null,
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "source.resume.demo",
+          "locator": "技能",
+          "excerpt": "技能"
+        }
+      ]
+    },
+    {
+      "candidateId": "c.skill.name",
+      "entityType": "skill",
+      "entityKey": "skill.python",
+      "fieldPath": "skill.name",
+      "proposedValue": "Python",
+      "locale": null,
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "source.resume.demo",
+          "locator": "技能",
+          "excerpt": "Python"
+        }
+      ]
+    },
+    {
+      "candidateId": "c.skill.level",
+      "entityType": "skill",
+      "entityKey": "skill.python",
+      "fieldPath": "skill.level",
+      "proposedValue": "熟练",
+      "locale": "zh-CN",
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "source.resume.demo",
+          "locator": "技能",
+          "excerpt": "熟练"
+        }
+      ]
+    },
+    {
+      "candidateId": "c.english.category",
+      "entityType": "skill",
+      "entityKey": "skill.english",
+      "fieldPath": "skill.category",
+      "proposedValue": "language",
+      "locale": null,
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "source.resume.demo",
+          "locator": "技能",
+          "excerpt": "英语：雅思 7.0（IELTS 7.0）"
+        }
+      ]
+    },
+    {
+      "candidateId": "c.english.name",
+      "entityType": "skill",
+      "entityKey": "skill.english",
+      "fieldPath": "skill.name",
+      "proposedValue": "英语",
+      "locale": "zh-CN",
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "source.resume.demo",
+          "locator": "技能",
+          "excerpt": "英语：雅思 7.0"
+        }
+      ]
+    },
+    {
+      "candidateId": "c.english.level",
+      "entityType": "skill",
+      "entityKey": "skill.english",
+      "fieldPath": "skill.level",
+      "proposedValue": "雅思 7.0",
+      "locale": "zh-CN",
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "source.resume.demo",
+          "locator": "技能",
+          "excerpt": "雅思 7.0"
+        }
+      ]
+    },
+    {
+      "candidateId": "c.english.level.en",
+      "entityType": "skill",
+      "entityKey": "skill.english",
+      "fieldPath": "skill.level",
+      "proposedValue": "IELTS 7.0",
+      "locale": "en",
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "source.resume.demo",
+          "locator": "技能",
+          "excerpt": "IELTS 7.0"
+        }
+      ]
+    },
+    {
+      "candidateId": "c.award.name",
+      "entityType": "award",
+      "entityKey": "award.scholarship-demo",
+      "fieldPath": "award.name",
+      "proposedValue": "示例大学一等奖学金",
+      "locale": "zh-CN",
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "source.resume.demo",
+          "locator": "奖项",
+          "excerpt": "示例大学一等奖学金"
+        }
+      ]
+    },
+    {
+      "candidateId": "c.award.date",
+      "entityType": "award",
+      "entityKey": "award.scholarship-demo",
+      "fieldPath": "award.date",
+      "proposedValue": "2020-10",
+      "locale": null,
+      "status": "pending",
+      "conflictGroupId": null,
+      "sourceRefs": [
+        {
+          "sourceId": "source.resume.demo",
+          "locator": "奖项",
+          "excerpt": "2020-10  示例大学一等奖学金"
+        }
+      ]
+    }
   ]
 }

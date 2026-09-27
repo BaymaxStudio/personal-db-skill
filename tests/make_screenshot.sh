@@ -30,7 +30,7 @@ UD="$(mktemp -d)"
 rm -f "$OUT"
 "$CHROME" --headless=new --disable-gpu --no-sandbox --hide-scrollbars \
   --user-data-dir="$UD" --no-first-run --no-default-browser-check \
-  --window-size=1360,720 --screenshot="$OUT" "http://127.0.0.1:$PORT" >/dev/null 2>&1 &
+  --window-size=1440,900 --screenshot="$OUT" "http://127.0.0.1:$PORT" >/dev/null 2>&1 &
 CP=$!
 for _ in $(seq 1 30); do [ -s "$OUT" ] && break; sleep 1; done
 kill -9 "$CP" 2>/dev/null || true

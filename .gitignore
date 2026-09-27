@@ -2,3 +2,4 @@
 tests/.demo-project/
 docs/*.tmp
 .DS_Store
+__pycache__/

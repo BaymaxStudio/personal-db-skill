@@ -1,23 +1,193 @@
 {
-  "_说明": "端到端回归用的决定样例：全部 accept。真实使用时由本人逐条拍板。",
+  "_说明": "样例决定：演示时全部采纳。真实使用时必须由本人逐条决定。",
   "decisionVersion": "1.0.0",
-  "decidedBy": "e2e-test",
-  "decidedAt": "2026-09-17T00:00:00Z",
+  "decidedBy": "demo",
+  "decidedAt": "2026-09-27T00:00:00Z",
   "decisions": [
-    { "candidateId": "c.person.name", "action": "accept", "replacementValue": null },
-    { "candidateId": "c.person.name.en", "action": "accept", "replacementValue": null },
-    { "candidateId": "c.person.email", "action": "accept", "replacementValue": null },
-    { "candidateId": "c.edu.institution", "action": "accept", "replacementValue": null },
-    { "candidateId": "c.edu.degree", "action": "accept", "replacementValue": null },
-    { "candidateId": "c.edu.major", "action": "accept", "replacementValue": null },
-    { "candidateId": "c.edu.gpa", "action": "accept", "replacementValue": null },
-    { "candidateId": "c.exp.type", "action": "accept", "replacementValue": null },
-    { "candidateId": "c.exp.org", "action": "accept", "replacementValue": null },
-    { "candidateId": "c.exp.title", "action": "accept", "replacementValue": null },
-    { "candidateId": "c.exp.overview", "action": "accept", "replacementValue": null },
-    { "candidateId": "c.skill.category", "action": "accept", "replacementValue": null },
-    { "candidateId": "c.skill.name", "action": "accept", "replacementValue": null },
-    { "candidateId": "c.skill.level", "action": "accept", "replacementValue": null },
-    { "candidateId": "c.award.name", "action": "accept", "replacementValue": null }
+    {
+      "candidateId": "c.person.name",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "c.person.name.en",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "c.person.email",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "c.person.phone",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "c.person.city",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "c.edu.institution",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "c.edu.degree",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "c.edu.major",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "c.edu.start",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "c.edu.end",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "c.edu.gpa",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "c.edu.avg",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "c.edu.rank",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "c.exp.type",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "c.exp.org",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "c.exp.title",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "c.exp.start",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "c.exp.end",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "c.exp.overview",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "c.exp.overview.en",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "c.research.type",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "c.research.title",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "c.research.role",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "c.research.start",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "c.research.end",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "c.research.overview",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "c.research.duty",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "c.research.recognition",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "c.skill.category",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "c.skill.name",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "c.skill.level",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "c.english.category",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "c.english.name",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "c.english.level",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "c.english.level.en",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "c.award.name",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "c.award.date",
+      "action": "accept",
+      "replacementValue": null
+    }
   ]
 }

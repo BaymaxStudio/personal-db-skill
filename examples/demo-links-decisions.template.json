@@ -1,0 +1,28 @@
+{
+  "_说明": "补挂来源的样例决定（candidateId 填 linkId）。",
+  "decisionVersion": "1.0.0",
+  "decidedBy": "demo",
+  "decidedAt": "2026-09-27T00:00:00Z",
+  "decisions": [
+    {
+      "candidateId": "link.demo.gpa",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "link.demo.major",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "link.demo.start",
+      "action": "accept",
+      "replacementValue": null
+    },
+    {
+      "candidateId": "link.demo.end",
+      "action": "accept",
+      "replacementValue": null
+    }
+  ]
+}

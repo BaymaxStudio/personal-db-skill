@@ -1,0 +1,59 @@
+{
+  "_说明": "补挂来源样例：GPA 等事实入库时只引用了简历，这里把成绩单补挂为一手凭证。",
+  "linkVersion": "1.0.0",
+  "generatedAt": "2026-09-27T00:00:00Z",
+  "sources": [
+    {
+      "sourceId": "evidence.transcript-demo",
+      "absolutePath": "__PROJECT_ROOT__/materials/demo-transcript.txt",
+      "documentType": "txt",
+      "sha256": "__SHA_TRANSCRIPT__"
+    }
+  ],
+  "links": [
+    {
+      "linkId": "link.demo.gpa",
+      "factId": "c.edu.gpa",
+      "sourceRefs": [
+        {
+          "sourceId": "evidence.transcript-demo",
+          "locator": "成绩单页眉",
+          "excerpt": "平均学分绩点（GPA）：3.8/4.0"
+        }
+      ]
+    },
+    {
+      "linkId": "link.demo.major",
+      "factId": "c.edu.major",
+      "sourceRefs": [
+        {
+          "sourceId": "evidence.transcript-demo",
+          "locator": "成绩单页眉",
+          "excerpt": "专业：计算机科学与技术"
+        }
+      ]
+    },
+    {
+      "linkId": "link.demo.start",
+      "factId": "c.edu.start",
+      "sourceRefs": [
+        {
+          "sourceId": "evidence.transcript-demo",
+          "locator": "成绩单页眉",
+          "excerpt": "入学时间：2018年9月"
+        }
+      ]
+    },
+    {
+      "linkId": "link.demo.end",
+      "factId": "c.edu.end",
+      "sourceRefs": [
+        {
+          "sourceId": "evidence.transcript-demo",
+          "locator": "成绩单页眉",
+          "excerpt": "毕业时间：2022年6月"
+        }
+      ]
+    }
+  ]
+}
