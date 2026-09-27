@@ -19,8 +19,13 @@
 | `skill` | `skill.python`、`skill.english` | 一项技能一个 key。 |
 | `award` | `award.scholarship-2024` | 一个奖项一个 key。 |
 
-`experience.type` 的取值（决定查看器里的分组）：
-`professional`(实习) / `research`(科研与论文) / `leadership`(社会实践·学生工作) / `project`(项目与作品，含作品集/开源/摄影等)。
+`experience.type` 的取值（决定查看器里的分区）：
+`professional`(实习经历) / `research`(科研与论文) / `leadership`(校园经历) / `project`(项目与作品，含作品集/开源/摄影等)。
+
+查看器的其他分区约定：
+- 证明人用 `experience.reference-<标识>` 这样的 entityKey，自动归到「证明人」分区。
+- 同校的辅修（学位或专业里带「辅修」/ minor）挂在主修下面显示；`experience.fact.url` 落在某个条目 `experience.fact.homeurl` 之下的项目，挂在那个条目下面显示（比如 GitHub 组织下的各个仓库）。
+- 个人专属的分区、字段显示名、排序写进 `web/viewer-config.json`，格式见 `viewer-config.example.json`。
 
 ## 字段路径 field_path 白名单
 
@@ -49,6 +54,18 @@
 
 `pending`(候选，待确认) → `confirmed`(本人确认，正式) / `rejected`(否掉) / `conflict`(与已有冲突，待裁决)。
 **查看器和导出只显示 `confirmed`。** 事实要变成 confirmed，必须走 decisions 流水线（见 pipeline.md）。
+
+## 来源分级
+
+查看器按来源 ID 和文件名把来源分三级，并按这个顺序展示：
+
+| 级别 | 判断 | 例子 |
+|---|---|---|
+| 一手 | 其余都算一手 | 成绩单、学位证、实习证明、获奖证书、offer |
+| 本人陈述 | sourceId 含 `supplement`，或文件名含「本人 / 陈述 / 表述 / 补充 / 信息采集 / 总结」 | 口述补充落成的 md、学年总结 |
+| 二手 | sourceId 或文件名含「简历 / 履历 / resume / cv」 | 各版本简历 |
+
+给来源起 sourceId 时按这个约定命名（如 `evidence.transcript`、`supplement.award-details-2026`、`source.resume.zh`），查看器就能分对。
 
 ## 日期写法
 

@@ -62,13 +62,54 @@ python3 career_profile.py add-expression \
 python3 career_profile.py list-expressions
 ```
 
+## 替换已有事实的值
+
+候选里加 `"supersedes": "<旧 fact_id>"`。新值被采纳（accept / replace）时，旧事实在同一事务里置为 `rejected`，留痕不删；
+否掉新值则旧事实原样保留。旧事实必须是 confirmed，且与新候选同一 entityKey、fieldPath、locale。
+
+## 给已有事实补挂来源（事实的值不变）
+
+```bash
+python3 career_profile.py validate-links staging/links-<批次名>.json
+python3 career_profile.py apply-links staging/links-<批次名>.json review/decisions-<批次名>.json
+```
+
+补挂文件格式（样例见 `examples/demo-links.template.json`）：
+
+```json
+{
+  "linkVersion": "1.0.0",
+  "generatedAt": "2026-09-27T00:00:00Z",
+  "sources": [ { "sourceId": "evidence.transcript", "absolutePath": "…", "documentType": "pdf", "sha256": "…" } ],
+  "links":   [ { "linkId": "link.gpa", "factId": "<已确认的 fact_id>", "sourceRefs": [ { "sourceId": "evidence.transcript", "locator": "页眉", "excerpt": "…" } ] } ],
+  "unlinks": [ { "unlinkId": "unlink.wrong", "factId": "<fact_id>", "sourceId": "<挂错的来源>", "reason": "为什么撤" } ]
+}
+```
+
+- 规则与候选相同：来源在素材目录内、SHA-256 一致、文本来源摘录逐字。
+- 同一事实不能重复挂同一来源；已登记过的 sourceId 必须指向同一份未改动的文件，文件改过就换新的 sourceId。
+- 撤销后每条事实至少保留一个来源。
+- 决定文件沿用 decisions 格式，`candidateId` 填 linkId / unlinkId，只接受 accept / reject。
+
+## 挪动材料后同步登记路径
+
+```bash
+python3 career_profile.py relocate-sources moves.json          # 预览
+python3 career_profile.py relocate-sources moves.json --apply  # 写库（自动备份）
+```
+
+`moves.json` 形如 `{"moves": {"旧绝对路径": "新绝对路径"}}`。只改 `sources.absolute_path`，不改登记时的 SHA-256；
+新位置必须在素材目录内且文件存在；登记后被改过的文件会单独列出，路径照常更新。
+挪动前先停掉查看器。
+
 ## 查看器（只读网页）
 
 ```bash
 cd web && python3 serve.py --port 8733     # 然后浏览器打开 http://127.0.0.1:8733
 ```
 macOS 上也可直接双击 `web/打开资料库.command`（自定位、后台常驻）。
-查看器只读打开数据库，只显示 `confirmed` 事实；可搜索、按中英筛选、逐条一键复制、点"N证"看出处。
+查看器只读打开数据库，只显示 `confirmed` 事实；可搜索、中英切换或对照、逐字段一键复制；「来源」开关按一手 → 本人陈述 → 二手的顺序显示出处。
+个人专属的分区或字段名写进 `web/viewer-config.json`（不进 Git），格式见 `web/viewer-config.example.json`。
 
 ## 边界
 

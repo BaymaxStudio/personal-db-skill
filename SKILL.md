@@ -61,17 +61,26 @@ description: >-
 6. **导出并校验。** `python3 career_profile.py export exports/career-profile.snapshot.json` 然后 `validate-export`。
 7. **提示用户刷新查看器**（若已开着），或双击 `web/打开资料库.command` 打开。
 
+## 日常维护（不新增事实时用这几个）
+
+- **补挂一手凭证。** 事实已入库、后来拿到了更硬的凭证（比如 GPA 先从简历录入，后来补了成绩单），写 `staging/links-<批次名>.json` 补挂来源，事实的值不变：`validate-links` → 用户确认 → `apply-links`。挂错的来源用同一文件里的 `unlinks` 撤销（每条事实至少保留一个来源）。
+- **改一条已有事实的值。** 候选里写 `"supersedes": "<旧 fact_id>"`，采纳后旧事实自动置为 `rejected`（留痕不删）。
+- **用户整理了材料文件夹。** 按「旧路径 → 新路径」写映射，`relocate-sources <映射> ` 先预览，再加 `--apply`；只改登记路径，不改指纹。
+- **核对来源时优先一手凭证。** 机构出具的成绩单、证书、证明、offer 是一手；本人补充陈述次之；简历是二手。给事实挂来源时尽量挂一手凭证，查看器也按这个顺序展示。
+
+命令与文件格式见 `reference/pipeline.md`。
+
 > 第一批候选务必包含姓名等 `person.*` 字段（entityKey=`person.owner`），否则 `export` 会因缺少 person 实体报错。
 > 另外几个契约必填：`experience.type`、`experience.title`、`skill.category`、`skill.name`、`award.name`。
 
 ## 打开查看器
 
-`cd web && python3 serve.py --port 8733` → 浏览器开 `http://127.0.0.1:8733`；macOS 可双击 `web/打开资料库.command`（自定位、后台常驻，关窗口不停服务）。只读、只显示 confirmed、可搜索/按中英筛选/逐条复制/看来源。默认只绑 `127.0.0.1`，不对外网开放。
+`cd web && python3 serve.py --port 8733` → 浏览器开 `http://127.0.0.1:8733`；macOS 可双击 `web/打开资料库.command`（自定位、后台常驻，关窗口不停服务）。只读、只显示 confirmed。页面按网申表单的顺序分区（基本信息、教育、实习、科研、项目、校园、奖项、技能、证明人），点任意字段即复制；可在中文、英文、中英对照之间切换，长文本标出字数；「来源」开关按一手 → 本人陈述 → 二手的顺序显示出处。个人专属的分区或字段名写进 `web/viewer-config.json`（不进 Git，格式见 `viewer-config.example.json`）。默认只绑 `127.0.0.1`，不对外网开放。
 
 ## 自检（改完本 skill 或交付前跑一遍）
 
 ```bash
-bash tests/run_e2e.sh          # 合成数据端到端：init→候选→校验→负向拦截→入库→导出→查看器 API
+bash tests/run_e2e.sh          # 单元测试 + 合成数据端到端：init→候选→校验→负向拦截→入库→补挂凭证→同步路径→导出→查看器 API
 bash tests/make_screenshot.sh  # 用合成数据重录 docs/viewer-demo.png（需本机 Chrome/Chromium）
 ```
 回归脚本只碰 `tests/.demo-project/`（已 gitignore），**不会读写任何真实库**。
