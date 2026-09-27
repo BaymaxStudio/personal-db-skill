@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Career Profile SQLite 数据库与 Snapshot 导出工具（阶段一）。
 
-职责：init / validate-candidates / apply-decisions / add-expression /
-list-expressions / export / validate-export。
+职责：init / validate-candidates / apply-decisions / validate-links /
+apply-links / relocate-sources / add-expression / list-expressions / export / validate-export。
 只使用 Python 标准库。候选事实必须经过用户确认（decisions.json）才能写入
 正式库，导出只包含 status=confirmed 的事实。
 """
@@ -24,7 +24,6 @@ PROFILE_DB_DIR = Path(__file__).resolve().parent
 DEFAULT_DB_PATH = PROFILE_DB_DIR / "data" / "career_profile.sqlite3"
 DEFAULT_EXPORT_PATH = PROFILE_DB_DIR / "exports" / "career-profile.snapshot.json"
 BACKUP_DIR = PROFILE_DB_DIR / "backups"
-
 
 def _allowed_source_dirs() -> list[Path]:
     """唯一允许作为事实来源的资料目录（硬校验）。
@@ -55,6 +54,7 @@ ALLOWED_SOURCE_DIRS = _allowed_source_dirs()
 
 CANDIDATE_VERSION = "1.0.0"
 DECISION_VERSION = "1.0.0"
+LINK_VERSION = "1.0.0"
 SCHEMA_VERSION = "1.0.0"
 DB_SCHEMA_VERSION = 2
 
@@ -409,20 +409,11 @@ def validate_locale(value: object, errors: list[str], path: str) -> bool:
     return True
 
 
-def validate_candidates_document(data: object) -> dict:
-    """校验候选文件结构（含来源路径、SHA-256、证据摘录、冲突分组）。
+def _validate_sources(sources: object, errors: list[str]) -> tuple[set[str], dict]:
+    """校验来源清单：stableId、绝对路径、允许目录、文件存在、SHA-256 一致。
 
-    返回规范化后的候选文档；失败抛出 ValidationError。
+    返回（已定义的 sourceId 集合，sourceId → 元数据）。候选文件与补挂来源文件共用。
     """
-    errors: list[str] = []
-    if not isinstance(data, dict):
-        raise ValidationError(["候选文件根节点必须是 JSON 对象"])
-    if data.get("candidateVersion") != CANDIDATE_VERSION:
-        errors.append(f"candidateVersion 必须是 {CANDIDATE_VERSION}")
-    if not isinstance(data.get("generatedAt"), str) or not data["generatedAt"]:
-        errors.append("generatedAt 必须是非空字符串（ISO 8601）")
-
-    sources = data.get("sources")
     if not isinstance(sources, list) or not sources:
         errors.append("sources 必须是非空数组")
     source_ids: set[str] = set()
@@ -469,6 +460,69 @@ def validate_candidates_document(data: object) -> dict:
                     f"实际 {actual}）"
                 )
             source_map.setdefault(sid, {})["realPath"] = real
+    return source_ids, source_map
+
+
+def _validate_source_refs(
+    refs: object,
+    path: str,
+    source_ids: set[str],
+    source_map: dict,
+    locator_cache: dict[str, str],
+    errors: list[str],
+) -> None:
+    """校验一组证据引用：来源已定义、locator/excerpt 非空、不重复引用、文本来源逐字。"""
+    if not isinstance(refs, list) or not refs:
+        errors.append(f"{path}.sourceRefs: 必须是非空数组")
+    else:
+        seen_ref = set()
+        for ridx, ref in enumerate(refs):
+            rp = f"{path}.sourceRefs[{ridx}]"
+            if not isinstance(ref, dict):
+                errors.append(f"{rp}: 必须是对象")
+                continue
+            sid = ref.get("sourceId")
+            if not isinstance(sid, str) or sid not in source_ids:
+                errors.append(f"{rp}.sourceId: 未定义的来源 {sid!r}")
+            locator = ref.get("locator")
+            excerpt = ref.get("excerpt")
+            if not isinstance(locator, str) or not locator:
+                errors.append(f"{rp}.locator: 必须是非空字符串")
+            if not isinstance(excerpt, str) or not excerpt:
+                errors.append(f"{rp}.excerpt: 必须是非空字符串")
+            if isinstance(sid, str) and sid in source_ids:
+                if sid in seen_ref:
+                    errors.append(f"{rp}.sourceId: 同一候选重复引用来源 {sid}")
+                seen_ref.add(sid)
+                meta = source_map.get(sid, {})
+                real = meta.get("realPath")
+                doc_type = meta.get("documentType")
+                if real is not None and is_text_document(doc_type or ""):
+                    text = locator_cache.get(str(real))
+                    if text is None:
+                        text = read_document_text(real, doc_type)
+                        locator_cache[str(real)] = text
+                    if isinstance(excerpt, str) and excerpt and excerpt not in text:
+                        errors.append(
+                            f"{rp}.excerpt: 未在来源文件中找到证据摘录"
+                            f"（{doc_type}：{real.name}）"
+                        )
+
+
+def validate_candidates_document(data: object) -> dict:
+    """校验候选文件结构（含来源路径、SHA-256、证据摘录、冲突分组）。
+
+    返回规范化后的候选文档；失败抛出 ValidationError。
+    """
+    errors: list[str] = []
+    if not isinstance(data, dict):
+        raise ValidationError(["候选文件根节点必须是 JSON 对象"])
+    if data.get("candidateVersion") != CANDIDATE_VERSION:
+        errors.append(f"candidateVersion 必须是 {CANDIDATE_VERSION}")
+    if not isinstance(data.get("generatedAt"), str) or not data["generatedAt"]:
+        errors.append("generatedAt 必须是非空字符串（ISO 8601）")
+
+    source_ids, source_map = _validate_sources(data.get("sources"), errors)
 
     candidates = data.get("candidates")
     if not isinstance(candidates, list) or not candidates:
@@ -519,41 +573,9 @@ def validate_candidates_document(data: object) -> dict:
             errors.append(f"{cp}.status: 候选文件只允许 pending 或 conflict，得到 {status!r}")
         if cg is not None:
             validate_stable_id(cg, errors, f"{cp}.conflictGroupId")
-        if not isinstance(refs, list) or not refs:
-            errors.append(f"{cp}.sourceRefs: 必须是非空数组")
-        else:
-            seen_ref = set()
-            for ridx, ref in enumerate(refs):
-                rp = f"{cp}.sourceRefs[{ridx}]"
-                if not isinstance(ref, dict):
-                    errors.append(f"{rp}: 必须是对象")
-                    continue
-                sid = ref.get("sourceId")
-                if not isinstance(sid, str) or sid not in source_ids:
-                    errors.append(f"{rp}.sourceId: 未定义的来源 {sid!r}")
-                locator = ref.get("locator")
-                excerpt = ref.get("excerpt")
-                if not isinstance(locator, str) or not locator:
-                    errors.append(f"{rp}.locator: 必须是非空字符串")
-                if not isinstance(excerpt, str) or not excerpt:
-                    errors.append(f"{rp}.excerpt: 必须是非空字符串")
-                if isinstance(sid, str) and sid in source_ids:
-                    if sid in seen_ref:
-                        errors.append(f"{rp}.sourceId: 同一候选重复引用来源 {sid}")
-                    seen_ref.add(sid)
-                    meta = source_map.get(sid, {})
-                    real = meta.get("realPath")
-                    doc_type = meta.get("documentType")
-                    if real is not None and is_text_document(doc_type or ""):
-                        text = locator_cache.get(str(real))
-                        if text is None:
-                            text = read_document_text(real, doc_type)
-                            locator_cache[str(real)] = text
-                        if isinstance(excerpt, str) and excerpt and excerpt not in text:
-                            errors.append(
-                                f"{rp}.excerpt: 未在来源文件中找到证据摘录"
-                                f"（{doc_type}：{real.name}）"
-                            )
+        if cand.get("supersedes") is not None:
+            validate_stable_id(cand["supersedes"], errors, f"{cp}.supersedes")
+        _validate_source_refs(refs, cp, source_ids, source_map, locator_cache, errors)
         # 分组统计（供冲突规则校验）
         if entity_key is not None and isinstance(field_path, str) and (
             field_path in FIELD_PATHS or FACT_SLUG_RE.match(field_path)
@@ -687,6 +709,28 @@ def entity_display_name(candidates: list[dict]) -> str:
 # apply-decisions
 # ---------------------------------------------------------------------------
 
+def _supersede(conn: sqlite3.Connection, cand: dict, now: str) -> None:
+    """新值采纳时把被替换的旧事实置为 rejected（留痕不删），释放唯一键。
+
+    旧事实必须已确认，且与新候选属于同一实体、字段和语言。
+    """
+    old_id = cand["supersedes"]
+    row = conn.execute(
+        "SELECT entity_id, field_path, locale, status FROM facts WHERE fact_id = ?",
+        (old_id,),
+    ).fetchone()
+    cid = cand["candidateId"]
+    if row is None:
+        raise ValidationError([f"{cid}.supersedes: 库中不存在事实 {old_id}"])
+    if row[3] != "confirmed":
+        raise ValidationError([f"{cid}.supersedes: {old_id} 的状态是 {row[3]}，只能替换已确认事实"])
+    if (row[0], row[1], row[2]) != (cand["entityKey"], cand["fieldPath"], cand.get("locale")):
+        raise ValidationError([f"{cid}.supersedes: {old_id} 与新候选不是同一实体、字段和语言"])
+    conn.execute(
+        "UPDATE facts SET status = 'rejected', updated_at = ? WHERE fact_id = ?", (now, old_id)
+    )
+
+
 def cmd_apply_decisions(candidates_path: Path, decisions_path: Path, db_path: Path) -> int:
     cand_data = load_json(candidates_path)
     validate_candidates_document(cand_data)  # 先整体校验，失败即退出
@@ -711,6 +755,8 @@ def cmd_apply_decisions(candidates_path: Path, decisions_path: Path, db_path: Pa
                 raise ValidationError([f"{fact_id}: 该候选已应用（重复应用被拒绝）"])
             action = dec["action"]
             status = "confirmed" if action in ("accept", "replace") else "rejected"
+            if status == "confirmed" and cand.get("supersedes"):
+                _supersede(conn, cand, utcnow_iso())
             value = (
                 dec["replacementValue"]
                 if action == "replace" and dec["replacementValue"] is not None
@@ -779,6 +825,278 @@ def cmd_apply_decisions(candidates_path: Path, decisions_path: Path, db_path: Pa
 
     backup_note = f"，备份：{backup.name}" if backup else "（首次应用，无既有库可备份）"
     print(f"已应用 {len(decisions)} 个决定；profile_revision = {new_rev}{backup_note}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# validate-links / apply-links：给已确认事实补挂来源（事实本身不变）
+# ---------------------------------------------------------------------------
+
+def validate_links_document(data: object, conn: sqlite3.Connection) -> dict:
+    """校验补挂来源文件（links 补挂、unlinks 撤销挂错的来源，至少有一类）。
+
+    来源规则与候选文件相同；另要求目标事实已确认、同一事实不重复挂同一来源、
+    已登记的 sourceId 指向同一份未改动的文件；撤销后每条事实至少保留一个来源。
+    失败抛出 ValidationError。
+    """
+    errors: list[str] = []
+    if not isinstance(data, dict):
+        raise ValidationError(["补挂来源文件根节点必须是 JSON 对象"])
+    if data.get("linkVersion") != LINK_VERSION:
+        errors.append(f"linkVersion 必须是 {LINK_VERSION}")
+    if not isinstance(data.get("generatedAt"), str) or not data["generatedAt"]:
+        errors.append("generatedAt 必须是非空字符串（ISO 8601）")
+
+    links = data.get("links", [])
+    unlinks = data.get("unlinks", [])
+    if not isinstance(links, list) or not isinstance(unlinks, list):
+        raise ValidationError(["links / unlinks 必须是数组"])
+    if not links and not unlinks:
+        errors.append("links 与 unlinks 不能都为空")
+
+    if links:
+        source_ids, source_map = _validate_sources(data.get("sources"), errors)
+    else:
+        source_ids, source_map = set(), {}
+    for idx, src in enumerate(data.get("sources") or []):
+        if not isinstance(src, dict):
+            continue
+        row = conn.execute(
+            "SELECT absolute_path, sha256 FROM sources WHERE source_id = ?",
+            (src.get("sourceId"),),
+        ).fetchone()
+        if row and (row[0] != src.get("absolutePath") or row[1] != src.get("sha256")):
+            errors.append(
+                f"sources[{idx}].sourceId: {src.get('sourceId')} 已登记为另一份文件或"
+                "文件的旧版本，请换一个新的 sourceId"
+            )
+
+    link_ids: set[str] = set()
+    pairs: set[tuple] = set()
+    locator_cache: dict[str, str] = {}
+    for idx, link in enumerate(links):
+        lp = f"links[{idx}]"
+        if not isinstance(link, dict):
+            errors.append(f"{lp}: 必须是对象")
+            continue
+        lid = link.get("linkId")
+        if isinstance(lid, str) and STABLE_ID_RE.match(lid):
+            if lid in link_ids:
+                errors.append(f"{lp}.linkId: 重复的 linkId {lid}")
+            link_ids.add(lid)
+        else:
+            errors.append(f"{lp}.linkId: 非法 stableId：{lid!r}")
+        fact_id = link.get("factId")
+        row = conn.execute(
+            "SELECT status FROM facts WHERE fact_id = ?", (fact_id,)
+        ).fetchone()
+        if row is None:
+            errors.append(f"{lp}.factId: 库中不存在事实 {fact_id!r}")
+        elif row[0] != "confirmed":
+            errors.append(f"{lp}.factId: 只能给已确认事实补挂来源，{fact_id} 的状态是 {row[0]}")
+        refs = link.get("sourceRefs")
+        _validate_source_refs(refs, lp, source_ids, source_map, locator_cache, errors)
+        for ref in refs if isinstance(refs, list) else []:
+            sid = ref.get("sourceId") if isinstance(ref, dict) else None
+            if (fact_id, sid) in pairs:
+                errors.append(f"{lp}: 文件内重复给 {fact_id} 挂来源 {sid}")
+            pairs.add((fact_id, sid))
+            if conn.execute(
+                "SELECT 1 FROM fact_sources WHERE fact_id = ? AND source_id = ?",
+                (fact_id, sid),
+            ).fetchone():
+                errors.append(f"{lp}: {fact_id} 已经挂有来源 {sid}")
+
+    removed: dict[str, set[str]] = {}
+    for idx, unlink in enumerate(unlinks):
+        up = f"unlinks[{idx}]"
+        if not isinstance(unlink, dict):
+            errors.append(f"{up}: 必须是对象")
+            continue
+        uid = unlink.get("unlinkId")
+        if isinstance(uid, str) and STABLE_ID_RE.match(uid):
+            if uid in link_ids:
+                errors.append(f"{up}.unlinkId: 与已有 ID 重复 {uid}")
+            link_ids.add(uid)
+        else:
+            errors.append(f"{up}.unlinkId: 非法 stableId：{uid!r}")
+        fact_id, sid = unlink.get("factId"), unlink.get("sourceId")
+        if not isinstance(unlink.get("reason"), str) or not unlink["reason"]:
+            errors.append(f"{up}.reason: 必须写明撤销原因")
+        if not conn.execute(
+            "SELECT 1 FROM fact_sources WHERE fact_id = ? AND source_id = ?", (fact_id, sid)
+        ).fetchone():
+            errors.append(f"{up}: {fact_id} 并没有挂来源 {sid!r}")
+            continue
+        removed.setdefault(fact_id, set()).add(sid)
+    for fact_id, sids in removed.items():
+        remaining = {
+            r[0] for r in conn.execute(
+                "SELECT source_id FROM fact_sources WHERE fact_id = ?", (fact_id,)
+            )
+        } - sids
+        added = {
+            ref.get("sourceId")
+            for link in links if isinstance(link, dict) and link.get("factId") == fact_id
+            for ref in link.get("sourceRefs") or [] if isinstance(ref, dict)
+        }
+        if not remaining and not added:
+            errors.append(f"{fact_id}: 撤销后没有任何来源，每条事实至少要保留一个来源")
+
+    if errors:
+        raise ValidationError(errors)
+    return data
+
+
+def _load_links(links_path: Path, db_path: Path) -> dict:
+    if not db_path.exists():
+        raise ValidationError([f"找不到数据库：{db_path}"])
+    data = load_json(links_path)
+    conn = connect(db_path)
+    try:
+        validate_links_document(data, conn)
+    finally:
+        conn.close()
+    return data
+
+
+def cmd_validate_links(links_path: Path, db_path: Path) -> int:
+    data = _load_links(links_path, db_path)
+    print(
+        f"补挂来源文件校验通过：{len(data.get('sources', []))} 个来源，"
+        f"{len(data.get('links', []))} 条补挂，{len(data.get('unlinks', []))} 条撤销"
+    )
+    return 0
+
+
+def cmd_apply_links(links_path: Path, decisions_path: Path, db_path: Path) -> int:
+    data = _load_links(links_path, db_path)
+    as_candidates = [
+        {**link, "candidateId": link["linkId"]} for link in data.get("links", [])
+    ] + [
+        {**unlink, "candidateId": unlink["unlinkId"]} for unlink in data.get("unlinks", [])
+    ]
+    decisions = validate_decisions_document(load_json(decisions_path), as_candidates)
+    bad = [d["candidateId"] for d in decisions if d["action"] not in ("accept", "reject")]
+    if bad:
+        raise ValidationError([f"{cid}: 补挂来源只接受 accept 或 reject" for cid in bad])
+
+    sources = {s["sourceId"]: s for s in data.get("sources", [])}
+    accepted = [d["candidate"] for d in decisions if d["action"] == "accept"]
+    to_link = [c for c in accepted if "linkId" in c]
+    to_unlink = [c for c in accepted if "unlinkId" in c]
+    backup = backup_db(db_path)
+    conn = connect(db_path)
+    try:
+        conn.execute("BEGIN")
+        now = utcnow_iso()
+        for unlink in to_unlink:
+            conn.execute(
+                "DELETE FROM fact_sources WHERE fact_id = ? AND source_id = ?",
+                (unlink["factId"], unlink["sourceId"]),
+            )
+            conn.execute(
+                "UPDATE facts SET updated_at = ? WHERE fact_id = ?", (now, unlink["factId"])
+            )
+        for link in to_link:
+            for ref in link["sourceRefs"]:
+                src = sources[ref["sourceId"]]
+                conn.execute(
+                    "INSERT OR IGNORE INTO sources (source_id, absolute_path,"
+                    " document_type, sha256, registered_at) VALUES (?, ?, ?, ?, ?)",
+                    (src["sourceId"], src["absolutePath"], src["documentType"], src["sha256"], now),
+                )
+                conn.execute(
+                    "INSERT INTO fact_sources (fact_id, source_id, locator, excerpt)"
+                    " VALUES (?, ?, ?, ?)",
+                    (link["factId"], ref["sourceId"], ref["locator"], ref["excerpt"]),
+                )
+            conn.execute(
+                "UPDATE facts SET updated_at = ? WHERE fact_id = ?", (now, link["factId"])
+            )
+        new_rev = get_profile_revision(conn) + 1
+        conn.execute(
+            "INSERT INTO profile_meta (key, value) VALUES ('profile_revision', ?)"
+            " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (str(new_rev),),
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+    backup_note = f"，备份：{backup.name}" if backup else ""
+    print(
+        f"已补挂 {len(to_link)} 条、撤销 {len(to_unlink)} 条"
+        f"（否决 {len(decisions) - len(accepted)} 条）；profile_revision = {new_rev}{backup_note}"
+    )
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# relocate-sources：资料文件挪了位置后，同步库里登记的路径
+# ---------------------------------------------------------------------------
+
+def cmd_relocate_sources(mapping_path: Path, db_path: Path, apply: bool) -> int:
+    """按 {"moves": {旧绝对路径: 新绝对路径}} 更新 sources.absolute_path。
+
+    只改路径，不改登记时的 SHA-256；新文件与登记时内容不同的会单独列出（文件在登记后被改过）。
+    默认只预览，加 --apply 才写库（写库前自动备份）。
+    """
+    moves = load_json(mapping_path).get("moves")
+    if not isinstance(moves, dict):
+        raise ValidationError(["映射文件必须包含 moves 对象：{旧绝对路径: 新绝对路径}"])
+    conn = connect(db_path)
+    try:
+        rows = conn.execute("SELECT source_id, absolute_path, sha256 FROM sources").fetchall()
+    finally:
+        conn.close()
+
+    errors: list[str] = []
+    updates: list[tuple[str, str]] = []
+    changed: list[str] = []
+    for source_id, old, registered_sha in rows:
+        new = moves.get(old)
+        if new is None:
+            if not Path(old).exists():
+                errors.append(f"{source_id}: 登记的文件已不在原位且映射里没有新位置：{old}")
+            continue
+        real = Path(new).resolve()
+        if not any(real.is_relative_to(d) for d in ALLOWED_SOURCE_DIRS):
+            errors.append(f"{source_id}: 新位置不在允许读取目录内：{new}")
+        elif not real.is_file():
+            errors.append(f"{source_id}: 新位置没有文件：{new}")
+        else:
+            if sha256_file(real) != registered_sha:
+                changed.append(f"{source_id}（{real.name}）")
+            updates.append((source_id, str(real)))
+    if errors:
+        raise ValidationError(errors)
+
+    print(f"需要更新路径的来源 {len(updates)} 个，共登记 {len(rows)} 个")
+    if changed:
+        print("以下文件在登记后被改过（路径照常更新，内容差异原本就存在）：" + "、".join(changed))
+    if not apply:
+        print("预览完成；确认无误后加 --apply 写库")
+        return 0
+    backup = backup_db(db_path)
+    conn = connect(db_path)
+    try:
+        conn.execute("BEGIN")
+        conn.executemany(
+            "UPDATE sources SET absolute_path = ? WHERE source_id = ?",
+            [(path, sid) for sid, path in updates],
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    backup_note = f"，备份：{backup.name}" if backup else ""
+    print(f"已更新 {len(updates)} 个来源路径{backup_note}")
     return 0
 
 
@@ -1533,6 +1851,20 @@ def _arg_parser() -> argparse.ArgumentParser:
     p_ad.add_argument("decisions", type=Path)
     p_ad.add_argument("--db", type=Path, default=DEFAULT_DB_PATH)
 
+    p_vl = sub.add_parser("validate-links", help="校验补挂来源文件（给已确认事实加证据）")
+    p_vl.add_argument("links", type=Path)
+    p_vl.add_argument("--db", type=Path, default=DEFAULT_DB_PATH)
+
+    p_al = sub.add_parser("apply-links", help="按人工决定补挂来源（写库前自动备份）")
+    p_al.add_argument("links", type=Path)
+    p_al.add_argument("decisions", type=Path)
+    p_al.add_argument("--db", type=Path, default=DEFAULT_DB_PATH)
+
+    p_rs = sub.add_parser("relocate-sources", help="资料文件挪位置后同步登记路径（默认预览）")
+    p_rs.add_argument("mapping", type=Path, help='JSON：{"moves": {旧绝对路径: 新绝对路径}}')
+    p_rs.add_argument("--apply", action="store_true", help="确认写库（写库前自动备份）")
+    p_rs.add_argument("--db", type=Path, default=DEFAULT_DB_PATH)
+
     p_exp = sub.add_parser("export", help="导出正式 Snapshot（只含 confirmed）")
     p_exp.add_argument("output", type=Path)
     p_exp.add_argument("--db", type=Path, default=DEFAULT_DB_PATH)
@@ -1578,6 +1910,13 @@ def main(argv: list[str] | None = None) -> int:
     args = _arg_parser().parse_args(argv)
 
     if args.command == "init":
+        # 建好标准目录；没有另行配置素材目录时，材料放进项目内的 materials/
+        default_materials = [(PROFILE_DB_DIR / "materials").resolve()]
+        dirs = ("staging", "review", "exports") + (
+            ("materials",) if ALLOWED_SOURCE_DIRS == default_materials else ()
+        )
+        for d in dirs:
+            (PROFILE_DB_DIR / d).mkdir(parents=True, exist_ok=True)
         backup = backup_db(args.db) if needs_migration(args.db) else None
         conn = connect(args.db)
         try:
@@ -1586,12 +1925,9 @@ def main(argv: list[str] | None = None) -> int:
             conn.commit()
         finally:
             conn.close()
-        # 建好标准目录，新用户直接把材料放进 materials/ 即可
-        for d in ("materials", "staging", "review", "exports"):
-            (PROFILE_DB_DIR / d).mkdir(parents=True, exist_ok=True)
         note = f"，备份：{backup.name}" if backup else ""
         print(f"数据库已初始化：{args.db}{note}")
-        print(f"标准目录已就绪：materials/ staging/ review/ exports/（材料请放进 materials/）")
+        print("素材目录：" + "、".join(str(d) for d in ALLOWED_SOURCE_DIRS))
         return 0
 
     if args.command == "validate-candidates":
@@ -1605,6 +1941,15 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "apply-decisions":
         return cmd_apply_decisions(args.candidates, args.decisions, args.db)
+
+    if args.command == "relocate-sources":
+        return cmd_relocate_sources(args.mapping, args.db, args.apply)
+
+    if args.command == "validate-links":
+        return cmd_validate_links(args.links, args.db)
+
+    if args.command == "apply-links":
+        return cmd_apply_links(args.links, args.decisions, args.db)
 
     if args.command == "export":
         return cmd_export(args.db, args.output)
