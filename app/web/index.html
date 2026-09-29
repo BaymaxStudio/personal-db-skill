@@ -716,8 +716,9 @@ function visibleTree(e) {
 
 const domId = id => 'e-' + id.replace(/[^\w-]/g, '_');
 
-// 来源已由服务端按「一手 → 本人陈述 → 二手」排好，第一份就是最可靠的那份
+// 来源暂按文件名推测等级并排序，不能替代原件核验。
 const tierOf = id => state.data?.sourceTiers?.find(t => t.id === id) || { id, label: id, hint: '' };
+const integrityLabel = s => ({ changed: '文件已变更，待核对', missing: '文件缺失', unreadable: '文件无法读取' }[s.integrity] || '');
 const tierChip = id => {
   const t = tierOf(id);
   return `<span class="tier tier-${esc(t.id)}" title="${esc(t.hint)}">${esc(t.label)}</span>`;
@@ -727,20 +728,21 @@ function srcLine(f) {
   const best = f.sources?.[0];
   if (!best) return '';
   const more = f.sources.length > 1 ? ` 等 ${f.sources.length} 份` : '';
-  return `<span class="s">${tierChip(best.tier)}<span>${esc(best.file)}${more}</span></span>`;
+  const warning = integrityLabel(best);
+  return `<span class="s">${tierChip(best.tier)}<span>${esc(best.file)}${more}${warning ? ` · ${esc(warning)}` : ''}</span></span>`;
 }
 
 function srcTitle(f) {
   if (!f.sources?.length) return '点击复制';
   return '点击复制\n\n来源：\n' + f.sources.map(s =>
-    `${tierOf(s.tier).label} · ${s.file}${s.locator ? `（${s.locator}）` : ''}`).join('\n');
+    `${tierOf(s.tier).label} · ${s.file}${s.locator ? `（${s.locator}）` : ''}${integrityLabel(s) ? ` · ${integrityLabel(s)}` : ''}`).join('\n');
 }
 
 function srcPanel(f, key, open) {
   if (!f.sources?.length) return '';
   return `<div class="src${open ? ' open' : ''}" data-src-box="${esc(key)}">${f.sources.map(s => `
     <div class="src-item">
-      <div class="src-file">${tierChip(s.tier)}<b>${esc(s.file)}</b><span class="src-tag">${esc((s.type || '').toUpperCase())}</span>${s.locator ? `<span class="src-tag">${esc(s.locator)}</span>` : ''}</div>
+      <div class="src-file">${tierChip(s.tier)}<b>${esc(s.file)}</b><span class="src-tag">${esc((s.type || '').toUpperCase())}</span>${s.locator ? `<span class="src-tag">${esc(s.locator)}</span>` : ''}${integrityLabel(s) ? `<span class="src-tag">${esc(integrityLabel(s))}</span>` : ''}</div>
       <blockquote>${esc(s.excerpt)}</blockquote>
     </div>`).join('')}</div>`;
 }
@@ -995,7 +997,14 @@ function render() {
     </section>`).join('');
 
   const exported = d.lastExportedAt ? ` · ${esc(d.lastExportedAt.slice(0, 10))} 导出快照` : '';
-  const foot = `<footer class="foot">共 ${d.counts.facts} 条已确认事实，出自 ${d.counts.sources} 份材料，其中 ${d.counts.primaryBacked} 条有一手凭证${d.profileRevision ? ` · 数据修订 ${esc(d.profileRevision)}` : ''}${exported}。<br>页面只在本机读取数据库，不联网、不写入。</footer>`;
+  const warnings = [];
+  if (d.integrity?.changedSources) warnings.push(`${d.integrity.changedSources} 份来源文件已变更`);
+  if (d.integrity?.missingSources) warnings.push(`${d.integrity.missingSources} 份来源文件缺失`);
+  if (d.integrity?.unreadableSources) warnings.push(`${d.integrity.unreadableSources} 份来源文件无法读取`);
+  if (d.counts.invalidExpressions) warnings.push(`${d.counts.invalidExpressions} 条文案因事实依据失效已隐藏`);
+  if (d.counts.pendingExpressions) warnings.push(`${d.counts.pendingExpressions} 条文案待确认`);
+  const notice = warnings.length ? `<p>${warnings.map(esc).join('；')}。请核对材料与文案。</p>` : '';
+  const foot = `<footer class="foot">${notice}共 ${d.counts.facts} 条已确认事实，出自 ${d.counts.sources} 份材料，其中 ${d.counts.primaryBacked} 条关联到暂归一手的来源${d.profileRevision ? ` · 数据修订 ${esc(d.profileRevision)}` : ''}${exported}。<br>来源等级由文件名推测，需结合原件核验。页面只在本机读取数据库，不联网、不写入。</footer>`;
 
   document.getElementById('main').innerHTML = total
     ? body + foot

@@ -15,14 +15,20 @@ import argparse
 import json
 import re
 import sqlite3
+import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlsplit
 
 WEB_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(WEB_DIR.parent))
+from source_integrity import scan_source_integrity  # noqa: E402
+
 DB_PATH = WEB_DIR.parent / "data" / "career_profile.sqlite3"
 # 可选的本地配置（不进 Git）：给个人专属的内容加分区、字段名和排序，格式见 viewer-config.example.json
 VIEWER_CONFIG_PATH = WEB_DIR / "viewer-config.json"
+# 当前页面的样式、脚本均内嵌；新增资源时必须逐个加入公开清单。
+PUBLIC_STATIC_PATHS = {"/": "index.html", "/index.html": "index.html"}
 
 # 页面分区。顺序贴近常见网申表单：基本信息 → 教育 → 实习 → 科研 → 项目 → 校园 → 奖项 → 技能 → 证明人 → 其他。
 # 「现成文案」只收没有挂到具体条目上的文案；挂了条目的文案跟着条目走。
@@ -242,10 +248,12 @@ def load_profile(include_rejected: bool = False) -> dict:
     priority = {**FIELD_PRIORITY, **cfg.get("fieldPriority", {})}
     section_ids = [s["id"] for s in sections]
 
-    uri = f"file:{DB_PATH}?mode=ro"
+    uri = DB_PATH.resolve().as_uri() + "?mode=ro"
     conn = sqlite3.connect(uri, uri=True)
     conn.row_factory = sqlite3.Row
     try:
+        # 同一次响应使用一个数据库快照，避免并发写入使事实与引用来自不同版本。
+        conn.execute("BEGIN")
         entities = [
             dict(r) for r in conn.execute(
                 "SELECT entity_id, entity_type, display_name FROM entities"
@@ -268,6 +276,7 @@ def load_profile(include_rejected: bool = False) -> dict:
             file_name = Path(row["absolute_path"]).name
             sources.setdefault(row["fact_id"], []).append(
                 {
+                    "id": row["source_id"],
                     "type": row["document_type"],
                     "file": file_name,
                     "tier": source_tier(row["source_id"], file_name),
@@ -279,11 +288,10 @@ def load_profile(include_rejected: bool = False) -> dict:
         for items in sources.values():
             items.sort(key=lambda s: (SOURCE_TIER_RANK[s["tier"]], s["file"]))
 
-        expr_status = "" if include_rejected else " WHERE e.status = 'confirmed'"
         expressions = [
             dict(r) for r in conn.execute(
                 "SELECT e.expression_id, e.purpose, e.locale, e.max_chars, "
-                "e.target_roles, e.text, e.status FROM expressions e" + expr_status
+                "e.target_roles, e.text, e.status FROM expressions e"
             )
         ]
         expr_facts: dict[str, list[str]] = {}
@@ -299,8 +307,32 @@ def load_profile(include_rejected: bool = False) -> dict:
 
         meta_rows = {r["key"]: r["value"] for r in conn.execute("SELECT key, value FROM profile_meta")}
         migration = conn.execute("SELECT MAX(version) AS v FROM schema_migrations").fetchone()
+        integrity = scan_source_integrity(conn)
     finally:
         conn.close()
+
+    integrity_by_source = {s["sourceId"]: s["integrity"] for s in integrity["sources"]}
+    for items in sources.values():
+        for source in items:
+            source["integrity"] = integrity_by_source[source["id"]]
+
+    # 旧库也可能包含失效文案；只有全部依据仍确认且有来源时，才可用于复制。
+    valid_fact_ids = {
+        fact["fact_id"] for fact in facts
+        if fact["status"] == "confirmed" and sources.get(fact["fact_id"])
+    }
+    pending_expressions = sum(ex["status"] == "pending" for ex in expressions)
+    invalid_expressions = 0
+    visible_expressions = []
+    for ex in expressions:
+        if not include_rejected and ex["status"] != "confirmed":
+            continue
+        refs = expr_facts.get(ex["expression_id"], [])
+        if not refs or any(fact_id not in valid_fact_ids for fact_id in refs):
+            invalid_expressions += ex["status"] == "confirmed"
+            continue
+        visible_expressions.append(ex)
+    expressions = visible_expressions
 
     grouped: dict[str, list[dict]] = {}
     for fact in facts:
@@ -366,7 +398,7 @@ def load_profile(include_rejected: bool = False) -> dict:
         ordered.extend(bucket)
 
     shown_sources = {
-        s["file"] for f in facts for s in sources.get(f["fact_id"], [])
+        s["id"] for f in facts for s in sources.get(f["fact_id"], [])
     }
     primary_backed = sum(
         1 for f in facts if any(s["tier"] == "primary" for s in sources.get(f["fact_id"], []))
@@ -383,9 +415,13 @@ def load_profile(include_rejected: bool = False) -> dict:
             "sources": len(shown_sources),
             "primaryBacked": primary_backed,
             "expressions": len(expressions),
+            "pendingExpressions": pending_expressions,
+            "invalidExpressions": invalid_expressions,
         },
         "sections": sections,
         "sourceTiers": SOURCE_TIERS,
+        "sourceTierMethod": "filename-heuristic",
+        "integrity": integrity,
         "skillCategories": SKILL_CATEGORIES,
         "entities": ordered,
         "expressions": orphan_expressions,
@@ -471,16 +507,56 @@ def find_parents(entities: list[dict]) -> dict[str, str]:
     return parents
 
 
+def public_static_path(path: str) -> Path | None:
+    """只接受明确公开的页面；拒绝任意目录访问和符号链接。"""
+    file_name = PUBLIC_STATIC_PATHS.get(path)
+    if file_name is None:
+        return None
+    target = WEB_DIR / file_name
+    if target.is_symlink():
+        return None
+    try:
+        resolved = target.resolve(strict=True)
+    except (OSError, RuntimeError):
+        return None
+    if resolved.parent != WEB_DIR.resolve() or not resolved.is_file():
+        return None
+    return resolved
+
+
+def valid_host_header(host_values: list[str], bound_host: str, bound_port: int) -> bool:
+    """限制请求所属地址，避免其他域名解析到本机后读取私人 API。"""
+    if len(host_values) != 1:
+        return False
+    hosts = {"localhost", "127.0.0.1", "[::1]"}
+    if bound_host and bound_host not in {"0.0.0.0", "::"}:
+        hosts.add(f"[{bound_host}]" if ":" in bound_host else bound_host.lower())
+    authorities = {f"{host}:{bound_port}" for host in hosts}
+    if bound_port == 80:
+        authorities.update(hosts)
+    return host_values[0].strip().lower() in authorities
+
+
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
-        path = urlparse(self.path).path
+        bound_host, bound_port = self.server.server_address[:2]
+        if not valid_host_header(self.headers.get_all("Host", []), bound_host, bound_port):
+            self.send_error(403, "host not allowed")
+            return
+        try:
+            url = urlsplit(self.path)
+        except ValueError:
+            self.send_error(404, "not found")
+            return
+        if url.scheme or url.netloc or url.fragment:
+            self.send_error(404, "not found")
+            return
+        path = url.path
         if path == "/api/profile":
             self._serve_profile()
             return
-        if path in ("/", ""):
-            path = "/index.html"
-        target = WEB_DIR / path.lstrip("/").replace("..", "")
-        if not target.exists() or not target.is_file():
+        target = public_static_path(path)
+        if target is None:
             self.send_error(404, "not found")
             return
         self._serve_file(target)
