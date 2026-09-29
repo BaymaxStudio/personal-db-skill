@@ -37,17 +37,23 @@ python3 career_profile.py export exports/career-profile.snapshot.json
 python3 career_profile.py validate-export exports/career-profile.snapshot.json
 ```
 
-> **导出要求存在 person 实体**：`export` 会硬校验至少有一个 `person.owner` 实体。
-> 所以第一批候选里应当包含姓名等 `person.*` 字段（entityKey = `person.owner`）。
+> **导出要求恰好一个有确认事实的 person 实体**。
+> 所以第一批候选里应当包含姓名等 `person.*` 字段，约定使用 entityKey = `person.owner`。
+
+`init` 将旧库升级到结构版本 3，保留原有事实和证据。写入命令先取得写事务，再通过 SQLite 在线备份保存已提交状态，迁移和实际修改整体提交或回滚。备份包含 WAL 中已提交的数据；不要用只复制 `.sqlite3` 主文件的方法备份运行中的库。
+
+导出在一致的事务中生成 1.1.0 快照，普通字段的其他语言放在 `alternatives` 数组中，各自保留事实 ID；先校验内存中的快照，再完整写入同目录临时文件并替换正式快照。生成失败时保留原文件。叙述要点的各语言版本仍分别保存在 `experiences[].facts[]`。`validate-export` 兼容 1.0.0 和 1.1.0，检查结构及引用完整性，不证明事实或材料语义真实。
 
 ## 候选与决定文件格式
 
 - 候选：`templates/candidates.template.json`。要点：
-  - `sources[].sourceId` 是小写稳定 id（≥2 字符，形如 `evidence.resume`）。
+  - `sources[].sourceId` 是小写稳定 id（3–120 字符，形如 `evidence.resume`）。
   - `sources[].absolutePath` 用**绝对路径**，且指向 `materials/` 内的文件。
   - `sources[].sha256` 是该文件的 SHA-256（`shasum -a 256`）。
   - 每个候选：`entityType` / `entityKey` / `fieldPath` / `proposedValue` / `locale` / `status:"pending"` / `sourceRefs[]`（含 `sourceId` `locator` `excerpt`）。
 - 决定：`templates/decisions.template.json`。`action` ∈ `accept` / `reject` / `replace`；`replace` 时用 `replacementValue` 覆盖后采纳。
+
+来源 ID 已登记时，路径、文档类型、SHA-256 必须与登记一致；不能用原 ID 登记修改后的材料。同一实体、字段和语言只能有一个确认值，空语言也受此约束；有冲突时按来源裁决，不覆盖旧事实。
 
 ## 表达（进阶，可选）
 
@@ -62,10 +68,14 @@ python3 career_profile.py add-expression \
 python3 career_profile.py list-expressions
 ```
 
+表达只可引用已确认、带来源且会进入导出的内容事实。`experience.type`、`skill.category` 是结构枚举，不能作为 `sourceFactIds`。其他语言的内容事实仍保留自己的 ID，可作为引用依据。
+
 ## 替换已有事实的值
 
 候选里加 `"supersedes": "<旧 fact_id>"`。新值被采纳（accept / replace）时，旧事实在同一事务里置为 `rejected`，留痕不删；
 否掉新值则旧事实原样保留。旧事实必须是 confirmed，且与新候选同一 entityKey、fieldPath、locale。
+
+新旧事实关系写入 `fact_supersessions`；引用旧事实的已确认表达改为 `pending`，正文和原引用保留，复核前不显示在正式查看器或导出中。系统不会自动把旧表达的依据换成新事实。
 
 ## 给已有事实补挂来源（事实的值不变）
 
@@ -88,7 +98,7 @@ python3 career_profile.py apply-links staging/links-<批次名>.json review/deci
 
 - 规则与候选相同：来源在素材目录内、SHA-256 一致、文本来源摘录逐字。
 - 同一事实不能重复挂同一来源；已登记过的 sourceId 必须指向同一份未改动的文件，文件改过就换新的 sourceId。
-- 撤销后每条事实至少保留一个来源。
+- 按实际接受的补挂和撤销操作核验结果，每条事实至少保留一个来源；不能靠拒绝补挂、接受撤销的组合留下无来源的事实。
 - 决定文件沿用 decisions 格式，`candidateId` 填 linkId / unlinkId，只接受 accept / reject。
 
 ## 挪动材料后同步登记路径
@@ -102,6 +112,17 @@ python3 career_profile.py relocate-sources moves.json --apply  # 写库（自动
 新位置必须在素材目录内且文件存在；登记后被改过的文件会单独列出，路径照常更新。
 挪动前先停掉查看器。
 
+## 来源完整性检查（只读）
+
+```bash
+python3 source_integrity.py
+python3 source_integrity.py --json
+```
+
+检查 SQLite 完整性、外键和来源文件指纹，并统计受影响的确认事实；不会更新事实、路径或原登记指纹。通过返回退出码 0，发现异常返回 1，无法打开数据库返回 2。文件改过、缺失或无法读取时，查看器会提示，导出也会警告；没有任何来源的确认事实则阻止导出。
+
+先寻找原材料版本，或经本人确认登记新来源；不要覆盖旧指纹消除异常提示。
+
 ## 查看器（只读网页）
 
 ```bash
@@ -109,6 +130,7 @@ cd web && python3 serve.py --port 8733     # 然后浏览器打开 http://127.0.
 ```
 macOS 上也可直接双击 `web/打开资料库.command`（自定位、后台常驻）。
 查看器只读打开数据库，只显示 `confirmed` 事实；可搜索、中英切换或对照、逐字段一键复制；「来源」开关按一手 → 本人陈述 → 二手的顺序显示出处。
+来源等级由 ID 和文件名推测，不替代原件核验；文件是否与登记指纹一致另行显示。API 在同一读事务中组织结果，页面静态服务仅公开查看器 HTML，不提供源代码或个人配置文件下载。
 个人专属的分区或字段名写进 `web/viewer-config.json`（不进 Git），格式见 `web/viewer-config.example.json`。
 
 ## 边界
@@ -118,4 +140,4 @@ macOS 上也可直接双击 `web/打开资料库.command`（自定位、后台�
 
 ## 一个坑
 
-写库时若报 `sqlite3.OperationalError: disk I/O error`：先停掉查看器服务，删掉 `data/*.sqlite3-journal`（库已是 WAL 模式），再重试。
+写库时若报 `sqlite3.OperationalError: disk I/O error`：停止新的写入，保留数据库及其 WAL/journal 文件，检查磁盘空间、文件权限和最近的在线备份。不要手动删除日志文件；其中可能包含恢复所需的数据。

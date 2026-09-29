@@ -1,0 +1,520 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://baymax.local/contracts/career-profile.schema.json",
+  "title": "Baymax Career Profile Snapshot",
+  "description": "Confirmed local career facts. Version 1.1.0 preserves additional locale variants; 1.0.0 forbids alternatives. IDs are globally unique; expression subjects reference entities only and sourceFactIds reference facts only. Each fact field has at most one variant per locale; at most one education record isHighest. String lengths count Unicode code points.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "profileRevision",
+    "exportedAt",
+    "person",
+    "education",
+    "experiences",
+    "skills",
+    "awards",
+    "expressions"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "enum": [
+        "1.0.0",
+        "1.1.0"
+      ]
+    },
+    "profileRevision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "exportedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "person": {
+      "$ref": "#/$defs/person"
+    },
+    "education": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/educationRecord"
+      }
+    },
+    "experiences": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/experienceRecord"
+      }
+    },
+    "skills": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/skillRecord"
+      }
+    },
+    "awards": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/awardRecord"
+      }
+    },
+    "expressions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/expressionRecord"
+      }
+    }
+  },
+  "$defs": {
+    "stableId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9._-]+$",
+      "minLength": 3,
+      "maxLength": 120
+    },
+    "locale": {
+      "type": "string",
+      "pattern": "^[a-z]{2,3}(-[A-Z]{2})?$"
+    },
+    "factValue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "factId",
+        "value"
+      ],
+      "properties": {
+        "factId": {
+          "$ref": "#/$defs/stableId"
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "locale": {
+          "$ref": "#/$defs/locale"
+        },
+        "alternatives": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/factVariant"
+          }
+        }
+      }
+    },
+    "person": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "fullName",
+        "contact",
+        "location"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/stableId"
+        },
+        "fullName": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "zhCN": {
+              "$ref": "#/$defs/factValue"
+            },
+            "en": {
+              "$ref": "#/$defs/factValue"
+            },
+            "givenNameEn": {
+              "$ref": "#/$defs/factValue"
+            },
+            "familyNameEn": {
+              "$ref": "#/$defs/factValue"
+            }
+          },
+          "minProperties": 1
+        },
+        "contact": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "email": {
+              "$ref": "#/$defs/factValue"
+            },
+            "phone": {
+              "$ref": "#/$defs/factValue"
+            }
+          }
+        },
+        "location": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "currentCity": {
+              "$ref": "#/$defs/factValue"
+            },
+            "currentCountry": {
+              "$ref": "#/$defs/factValue"
+            }
+          }
+        }
+      }
+    },
+    "educationRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "institution"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/stableId"
+        },
+        "isHighest": {
+          "type": "boolean"
+        },
+        "institution": {
+          "$ref": "#/$defs/factValue"
+        },
+        "degree": {
+          "$ref": "#/$defs/factValue"
+        },
+        "major": {
+          "$ref": "#/$defs/factValue"
+        },
+        "minor": {
+          "$ref": "#/$defs/factValue"
+        },
+        "location": {
+          "$ref": "#/$defs/factValue"
+        },
+        "startDate": {
+          "$ref": "#/$defs/factValue"
+        },
+        "endDate": {
+          "$ref": "#/$defs/factValue"
+        },
+        "gpa": {
+          "$ref": "#/$defs/factValue"
+        },
+        "averageScore": {
+          "$ref": "#/$defs/factValue"
+        },
+        "ranking": {
+          "$ref": "#/$defs/factValue"
+        }
+      }
+    },
+    "narrativeFact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "factId",
+        "text",
+        "locale"
+      ],
+      "properties": {
+        "factId": {
+          "$ref": "#/$defs/stableId"
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "locale": {
+          "$ref": "#/$defs/locale"
+        }
+      }
+    },
+    "experienceRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type",
+        "title",
+        "facts"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/stableId"
+        },
+        "type": {
+          "enum": [
+            "professional",
+            "research",
+            "leadership",
+            "project"
+          ]
+        },
+        "title": {
+          "$ref": "#/$defs/factValue"
+        },
+        "organization": {
+          "$ref": "#/$defs/factValue"
+        },
+        "role": {
+          "$ref": "#/$defs/factValue"
+        },
+        "location": {
+          "$ref": "#/$defs/factValue"
+        },
+        "startDate": {
+          "$ref": "#/$defs/factValue"
+        },
+        "endDate": {
+          "$ref": "#/$defs/factValue"
+        },
+        "facts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/narrativeFact"
+          }
+        }
+      }
+    },
+    "skillRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "category",
+        "name"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/stableId"
+        },
+        "category": {
+          "enum": [
+            "language",
+            "technical",
+            "research",
+            "qualification",
+            "other"
+          ]
+        },
+        "name": {
+          "$ref": "#/$defs/factValue"
+        },
+        "level": {
+          "$ref": "#/$defs/factValue"
+        },
+        "details": {
+          "$ref": "#/$defs/factValue"
+        }
+      }
+    },
+    "awardRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/stableId"
+        },
+        "name": {
+          "$ref": "#/$defs/factValue"
+        },
+        "issuer": {
+          "$ref": "#/$defs/factValue"
+        },
+        "date": {
+          "$ref": "#/$defs/factValue"
+        },
+        "details": {
+          "$ref": "#/$defs/factValue"
+        }
+      }
+    },
+    "expressionRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "purpose",
+        "locale",
+        "maxChars",
+        "targetRoles",
+        "text",
+        "sourceFactIds"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/stableId"
+        },
+        "purpose": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "locale": {
+          "$ref": "#/$defs/locale"
+        },
+        "maxChars": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "targetRoles": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "uniqueItems": true
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8000
+        },
+        "subjectIds": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/stableId"
+          },
+          "uniqueItems": true
+        },
+        "sourceFactIds": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/stableId"
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "factVariant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "factId",
+        "value"
+      ],
+      "properties": {
+        "factId": {
+          "$ref": "#/$defs/stableId"
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        "locale": {
+          "$ref": "#/$defs/locale"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "schemaVersion": {
+            "const": "1.0.0"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "person": {
+            "properties": {
+              "fullName": {
+                "additionalProperties": {
+                  "not": {
+                    "type": "object",
+                    "required": [
+                      "alternatives"
+                    ]
+                  }
+                }
+              },
+              "contact": {
+                "additionalProperties": {
+                  "not": {
+                    "type": "object",
+                    "required": [
+                      "alternatives"
+                    ]
+                  }
+                }
+              },
+              "location": {
+                "additionalProperties": {
+                  "not": {
+                    "type": "object",
+                    "required": [
+                      "alternatives"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "education": {
+            "items": {
+              "additionalProperties": {
+                "not": {
+                  "type": "object",
+                  "required": [
+                    "alternatives"
+                  ]
+                }
+              }
+            }
+          },
+          "experiences": {
+            "items": {
+              "additionalProperties": {
+                "not": {
+                  "type": "object",
+                  "required": [
+                    "alternatives"
+                  ]
+                }
+              }
+            }
+          },
+          "skills": {
+            "items": {
+              "additionalProperties": {
+                "not": {
+                  "type": "object",
+                  "required": [
+                    "alternatives"
+                  ]
+                }
+              }
+            }
+          },
+          "awards": {
+            "items": {
+              "additionalProperties": {
+                "not": {
+                  "type": "object",
+                  "required": [
+                    "alternatives"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

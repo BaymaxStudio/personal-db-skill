@@ -14,9 +14,10 @@ import hashlib
 import json
 import os
 import re
-import shutil
 import sqlite3
 import sys
+import tempfile
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -55,8 +56,8 @@ ALLOWED_SOURCE_DIRS = _allowed_source_dirs()
 CANDIDATE_VERSION = "1.0.0"
 DECISION_VERSION = "1.0.0"
 LINK_VERSION = "1.0.0"
-SCHEMA_VERSION = "1.0.0"
-DB_SCHEMA_VERSION = 2
+SCHEMA_VERSION = "1.1.0"
+DB_SCHEMA_VERSION = 3
 
 STATUSES = ("pending", "confirmed", "conflict", "rejected")
 ACTIONS = ("accept", "reject", "replace")
@@ -66,7 +67,7 @@ SKILL_CATEGORIES = ("language", "technical", "research", "qualification", "other
 # 文本类来源（可做证据摘录包含性检查）；Word/PDF 程序不解析。
 TEXT_DOCUMENT_TYPES = ("md", "html", "txt")
 
-STABLE_ID_RE = re.compile(r"^[a-z][a-z0-9._-]+$")
+STABLE_ID_RE = re.compile(r"^[a-z][a-z0-9._-]{2,119}$")
 LOCALE_RE = re.compile(r"^[a-z]{2,3}(-[A-Z]{2})?$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 FACT_SLUG_RE = re.compile(r"^experience\.fact\.[a-z0-9._-]+$")
@@ -289,6 +290,19 @@ MIGRATIONS: dict[int, str] = {
         PRIMARY KEY (expression_id, entity_id)
     );
     """,
+    3: """
+    DROP INDEX IF EXISTS facts_confirmed_unique;
+    CREATE UNIQUE INDEX facts_confirmed_unique ON facts (
+        entity_id, field_path, COALESCE(locale, '')
+    ) WHERE status = 'confirmed';
+    CREATE TABLE IF NOT EXISTS fact_supersessions (
+        old_fact_id TEXT NOT NULL REFERENCES facts(fact_id),
+        new_fact_id TEXT NOT NULL REFERENCES facts(fact_id),
+        superseded_at TEXT NOT NULL,
+        PRIMARY KEY (old_fact_id, new_fact_id),
+        CHECK (old_fact_id != new_fact_id)
+    );
+    """,
 }
 
 
@@ -300,22 +314,52 @@ def connect(db_path: Path) -> sqlite3.Connection:
 
 
 def backup_db(db_path: Path) -> Path | None:
-    """复制现有数据库到 backups/，备份名含 UTC 时间与原库 SHA-256。"""
+    """备份完整已提交快照（含 WAL）；失败时不留下可误认为成功的文件。"""
     if not db_path.exists():
         return None
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    digest = sha256_file(db_path)
-    ts = utcnow().strftime("%Y%m%dT%H%M%SZ")
-    target = BACKUP_DIR / f"career_profile.{ts}.{digest}.db"
-    shutil.copy2(db_path, target)
-    return target
+    fd, temporary = tempfile.mkstemp(prefix=".career_profile.", suffix=".tmp", dir=BACKUP_DIR)
+    os.close(fd)
+    pending = Path(temporary)
+    try:
+        source = sqlite3.connect(db_path.resolve().as_uri() + "?mode=ro", uri=True)
+        try:
+            destination = sqlite3.connect(str(pending))
+            try:
+                source.backup(destination)
+                if destination.execute("PRAGMA integrity_check").fetchall() != [("ok",)]:
+                    raise ValidationError(["备份完整性检查失败，未生成备份文件"])
+            finally:
+                destination.close()
+        finally:
+            source.close()
+        digest = sha256_file(pending)
+        ts = utcnow().strftime("%Y%m%dT%H%M%S%fZ")
+        target = BACKUP_DIR / f"career_profile.{ts}.{uuid.uuid4().hex}.{digest}.db"
+        pending.rename(target)
+        return target
+    finally:
+        pending.unlink(missing_ok=True)
 
 
 def current_schema_version(conn: sqlite3.Connection) -> int:
-    row = conn.execute(
-        "SELECT COALESCE(MAX(version), 0) FROM schema_migrations"
-    ).fetchone()
-    return int(row[0])
+    if not conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_migrations'"
+    ).fetchone():
+        return 0
+    rows = conn.execute("SELECT version, sha256 FROM schema_migrations ORDER BY version").fetchall()
+    versions = [row[0] for row in rows]
+    if any(type(version) is not int or version < 1 for version in versions):
+        raise ValidationError(["数据库迁移版本无效，未执行迁移"])
+    current = versions[-1] if versions else 0
+    if current > DB_SCHEMA_VERSION:
+        raise ValidationError([f"数据库版本 {current} 高于程序支持的 {DB_SCHEMA_VERSION}，请使用兼容版本"])
+    if versions != list(range(1, current + 1)):
+        raise ValidationError(["数据库迁移记录不连续，未执行迁移"])
+    for version, digest in rows:
+        if digest != sha256_bytes(MIGRATIONS[version].encode("utf-8")):
+            raise ValidationError([f"数据库迁移 {version} 指纹与程序不一致，未执行迁移"])
+    return current
 
 
 def migrate(conn: sqlite3.Connection) -> None:
@@ -324,16 +368,27 @@ def migrate(conn: sqlite3.Connection) -> None:
     sqlite3 的 executescript 会隐式提交进行中的事务，因此这里把脚本拆成
     单条语句逐条执行，保证迁移原子性。
     """
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS schema_migrations ("
-        " version INTEGER PRIMARY KEY,"
-        " applied_at TEXT NOT NULL,"
-        " sha256 TEXT NOT NULL)"
-    )
-    conn.execute("BEGIN")
+    owns_transaction = not conn.in_transaction
+    if owns_transaction:
+        conn.execute("BEGIN IMMEDIATE")
     try:
         current = current_schema_version(conn)
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS schema_migrations ("
+            " version INTEGER PRIMARY KEY,"
+            " applied_at TEXT NOT NULL,"
+            " sha256 TEXT NOT NULL)"
+        )
         for version in range(current + 1, DB_SCHEMA_VERSION + 1):
+            if version == 3:
+                duplicates = conn.execute(
+                    "SELECT entity_id, field_path, COALESCE(locale, ''), COUNT(*)"
+                    " FROM facts WHERE status='confirmed'"
+                    " GROUP BY entity_id, field_path, COALESCE(locale, '') HAVING COUNT(*) > 1"
+                ).fetchall()
+                if duplicates:
+                    details = "; ".join(f"{e}/{f}/{loc or '(无语言)'}: {count} 条" for e, f, loc, count in duplicates)
+                    raise ValidationError(["v3 迁移发现同字段同语言的多条确认事实，原库保持不变；需先人工裁决：" + details])
             sql = MIGRATIONS[version]
             for statement in split_sql_statements(sql):
                 conn.execute(statement)
@@ -342,7 +397,8 @@ def migrate(conn: sqlite3.Connection) -> None:
                 " VALUES (?, ?, ?)",
                 (version, utcnow_iso(), sha256_bytes(sql.encode("utf-8"))),
             )
-        conn.commit()
+        if owns_transaction:
+            conn.commit()
     except Exception:
         conn.rollback()
         raise
@@ -352,21 +408,28 @@ def needs_migration(db_path: Path) -> bool:
     """数据库不存在、表缺失或版本落后时返回 True（迁移前需要备份）。"""
     if not db_path.exists():
         return False
-    conn = sqlite3.connect(str(db_path))
-    try:
-        row = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-            " AND name='schema_migrations'"
-        ).fetchone()
-    finally:
-        conn.close()
-    if row is None:
-        return True
-    conn = connect(db_path)
+    conn = sqlite3.connect(db_path.resolve().as_uri() + "?mode=ro", uri=True)
     try:
         return current_schema_version(conn) < DB_SCHEMA_VERSION
     finally:
         conn.close()
+
+
+def _prepare_write(db_path: Path) -> tuple[sqlite3.Connection, Path | None]:
+    """锁定写入后备份已提交状态，再把迁移和本次修改放进同一事务。"""
+    existed = db_path.exists()
+    conn = connect(db_path)
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        current_schema_version(conn)
+        backup = backup_db(db_path) if existed else None
+        migrate(conn)
+        ensure_meta_row(conn)
+        return conn, backup
+    except Exception:
+        conn.rollback()
+        conn.close()
+        raise
 
 
 def ensure_meta_row(conn: sqlite3.Connection) -> None:
@@ -394,8 +457,8 @@ def _check(cond: bool, errors: list[str], message: str) -> bool:
 
 
 def validate_stable_id(value: object, errors: list[str], path: str) -> bool:
-    if not isinstance(value, str) or not STABLE_ID_RE.match(value):
-        errors.append(f"{path}: 非法 stableId（需匹配 ^[a-z][a-z0-9._-]+$）：{value!r}")
+    if not isinstance(value, str) or not STABLE_ID_RE.fullmatch(value):
+        errors.append(f"{path}: 非法 stableId（小写字母开头，限字母/数字/._-，长度 3–120）：{value!r}")
         return False
     return True
 
@@ -403,10 +466,21 @@ def validate_stable_id(value: object, errors: list[str], path: str) -> bool:
 def validate_locale(value: object, errors: list[str], path: str) -> bool:
     if value is None:
         return True
-    if not isinstance(value, str) or not LOCALE_RE.match(value):
+    if not isinstance(value, str) or not LOCALE_RE.fullmatch(value):
         errors.append(f"{path}: 非法 locale：{value!r}")
         return False
     return True
+
+
+def _validate_field_value(field_path: str, value: object, errors: list[str], path: str) -> None:
+    if not isinstance(value, str) or not value.strip():
+        errors.append(f"{path}: 必须是非空白字符串")
+    elif len(value) > 4000:
+        errors.append(f"{path}: 超过 4000 字符")
+    elif field_path == "experience.type" and value not in EXPERIENCE_TYPES:
+        errors.append(f"{path}: experience.type 必须是 {EXPERIENCE_TYPES} 之一")
+    elif field_path == "skill.category" and value not in SKILL_CATEGORIES:
+        errors.append(f"{path}: skill.category 必须是 {SKILL_CATEGORIES} 之一")
 
 
 def _validate_sources(sources: object, errors: list[str]) -> tuple[set[str], dict]:
@@ -424,7 +498,7 @@ def _validate_sources(sources: object, errors: list[str]) -> tuple[set[str], dic
             errors.append(f"{sp}: 必须是对象")
             continue
         sid = src.get("sourceId")
-        if isinstance(sid, str) and STABLE_ID_RE.match(sid):
+        if isinstance(sid, str) and STABLE_ID_RE.fullmatch(sid):
             if sid in source_ids:
                 errors.append(f"{sp}.sourceId: 重复的 sourceId {sid}")
             else:
@@ -509,6 +583,24 @@ def _validate_source_refs(
                         )
 
 
+def _validate_registered_sources(conn: sqlite3.Connection, sources: list[dict]) -> None:
+    """sourceId 永远标识同一路径、类型和内容；更新材料须使用新 ID。"""
+    errors: list[str] = []
+    for src in sources:
+        row = conn.execute(
+            "SELECT absolute_path, document_type, sha256 FROM sources WHERE source_id = ?",
+            (src["sourceId"],),
+        ).fetchone()
+        identity = (src["absolutePath"], src["documentType"], src["sha256"])
+        if row is not None and tuple(row) != identity:
+            errors.append(
+                f"{src['sourceId']}: 已登记为另一份文件、类型或文件的旧版本；"
+                "请使用新的 sourceId，原来源指纹不会被覆盖"
+            )
+    if errors:
+        raise ValidationError(errors)
+
+
 def validate_candidates_document(data: object) -> dict:
     """校验候选文件结构（含来源路径、SHA-256、证据摘录、冲突分组）。
 
@@ -539,7 +631,7 @@ def validate_candidates_document(data: object) -> dict:
             errors.append(f"{cp}: 必须是对象")
             continue
         cid = cand.get("candidateId")
-        if isinstance(cid, str) and STABLE_ID_RE.match(cid):
+        if isinstance(cid, str) and STABLE_ID_RE.fullmatch(cid):
             if cid in candidate_ids:
                 errors.append(f"{cp}.candidateId: 重复的候选 ID {cid}")
             else:
@@ -563,12 +655,11 @@ def validate_candidates_document(data: object) -> dict:
             isinstance(field_path, str) and FACT_SLUG_RE.match(field_path)
         ):
             errors.append(f"{cp}.fieldPath: 不在白名单内：{field_path!r}")
+        elif entity_type in ENTITY_TYPES and not field_path.startswith(entity_type + "."):
+            errors.append(f"{cp}.fieldPath: 字段不属于 {entity_type} 实体")
         if not validate_locale(locale, errors, f"{cp}.locale"):
             locale = None
-        if not isinstance(value, str) or not value:
-            errors.append(f"{cp}.proposedValue: 必须是非空字符串")
-        elif len(value) > 4000:
-            errors.append(f"{cp}.proposedValue: 超过 4000 字符")
+        _validate_field_value(field_path, value, errors, f"{cp}.proposedValue")
         if status not in ("pending", "conflict"):
             errors.append(f"{cp}.status: 候选文件只允许 pending 或 conflict，得到 {status!r}")
         if cg is not None:
@@ -666,10 +757,10 @@ def validate_decisions_document(data: object, candidates: list[dict]) -> list[di
         if action not in ACTIONS:
             errors.append(f"{dp}.action: 必须是 {ACTIONS} 之一，得到 {action!r}")
         if action == "replace":
-            if not isinstance(replacement, str) or not replacement:
-                errors.append(f"{dp}.replacementValue: replace 必须提供非空字符串")
-            elif len(replacement) > 4000:
-                errors.append(f"{dp}.replacementValue: 超过 4000 字符")
+            _validate_field_value(
+                candidate_map.get(cid, {}).get("fieldPath", ""), replacement, errors,
+                f"{dp}.replacementValue",
+            )
         if cid in candidate_map:
             out.append(
                 {
@@ -729,6 +820,12 @@ def _supersede(conn: sqlite3.Connection, cand: dict, now: str) -> None:
     conn.execute(
         "UPDATE facts SET status = 'rejected', updated_at = ? WHERE fact_id = ?", (now, old_id)
     )
+    conn.execute(
+        "UPDATE expressions SET status = 'pending', updated_at = ?"
+        " WHERE status='confirmed' AND expression_id IN"
+        " (SELECT expression_id FROM expression_sources WHERE fact_id = ?)",
+        (now, old_id),
+    )
 
 
 def cmd_apply_decisions(candidates_path: Path, decisions_path: Path, db_path: Path) -> int:
@@ -741,10 +838,11 @@ def cmd_apply_decisions(candidates_path: Path, decisions_path: Path, db_path: Pa
     for cand in cand_data["candidates"]:
         candidates_by_entity.setdefault(cand["entityKey"], []).append(cand)
 
-    backup = backup_db(db_path)
-    conn = connect(db_path)
+    conn, backup = _prepare_write(db_path)
     try:
-        conn.execute("BEGIN")
+        # 文件可能在准备决定与实际写入之间变化；锁内重新核实来源与身份。
+        validate_candidates_document(cand_data)
+        _validate_registered_sources(conn, cand_data["sources"])
         for dec in decisions:
             cand = dec["candidate"]
             fact_id = cand["candidateId"]
@@ -764,6 +862,22 @@ def cmd_apply_decisions(candidates_path: Path, decisions_path: Path, db_path: Pa
             )
             entity_key = cand["entityKey"]
             now = utcnow_iso()
+            entity = conn.execute(
+                "SELECT entity_type FROM entities WHERE entity_id = ?", (entity_key,)
+            ).fetchone()
+            if entity and entity[0] != cand["entityType"]:
+                raise ValidationError([f"{fact_id}: entityKey 已属于 {entity[0]}，不能改为 {cand['entityType']}"])
+            if status == "confirmed":
+                occupied = conn.execute(
+                    "SELECT fact_id FROM facts WHERE entity_id = ? AND field_path = ?"
+                    " AND COALESCE(locale, '') = COALESCE(?, '') AND status='confirmed'",
+                    (entity_key, cand["fieldPath"], cand.get("locale")),
+                ).fetchone()
+                if occupied:
+                    raise ValidationError([
+                        f"{fact_id}: 同一实体、字段和语言已有确认事实 {occupied[0]}；"
+                        "请选择一个冲突值，替换旧值需显式指定 supersedes"
+                    ])
             conn.execute(
                 "INSERT INTO entities (entity_id, entity_type, display_name,"
                 " created_at, updated_at) VALUES (?, ?, ?, ?, ?)"
@@ -790,6 +904,12 @@ def cmd_apply_decisions(candidates_path: Path, decisions_path: Path, db_path: Pa
                     now,
                 ),
             )
+            if status == "confirmed" and cand.get("supersedes"):
+                conn.execute(
+                    "INSERT INTO fact_supersessions (old_fact_id, new_fact_id, superseded_at)"
+                    " VALUES (?, ?, ?)",
+                    (cand["supersedes"], fact_id, now),
+                )
             for ref in cand["sourceRefs"]:
                 src = next(
                     s for s in cand_data["sources"] if s["sourceId"] == ref["sourceId"]
@@ -862,10 +982,10 @@ def validate_links_document(data: object, conn: sqlite3.Connection) -> dict:
         if not isinstance(src, dict):
             continue
         row = conn.execute(
-            "SELECT absolute_path, sha256 FROM sources WHERE source_id = ?",
+            "SELECT absolute_path, document_type, sha256 FROM sources WHERE source_id = ?",
             (src.get("sourceId"),),
         ).fetchone()
-        if row and (row[0] != src.get("absolutePath") or row[1] != src.get("sha256")):
+        if row and tuple(row) != (src.get("absolutePath"), src.get("documentType"), src.get("sha256")):
             errors.append(
                 f"sources[{idx}].sourceId: {src.get('sourceId')} 已登记为另一份文件或"
                 "文件的旧版本，请换一个新的 sourceId"
@@ -880,7 +1000,7 @@ def validate_links_document(data: object, conn: sqlite3.Connection) -> dict:
             errors.append(f"{lp}: 必须是对象")
             continue
         lid = link.get("linkId")
-        if isinstance(lid, str) and STABLE_ID_RE.match(lid):
+        if isinstance(lid, str) and STABLE_ID_RE.fullmatch(lid):
             if lid in link_ids:
                 errors.append(f"{lp}.linkId: 重复的 linkId {lid}")
             link_ids.add(lid)
@@ -914,13 +1034,16 @@ def validate_links_document(data: object, conn: sqlite3.Connection) -> dict:
             errors.append(f"{up}: 必须是对象")
             continue
         uid = unlink.get("unlinkId")
-        if isinstance(uid, str) and STABLE_ID_RE.match(uid):
+        if isinstance(uid, str) and STABLE_ID_RE.fullmatch(uid):
             if uid in link_ids:
                 errors.append(f"{up}.unlinkId: 与已有 ID 重复 {uid}")
             link_ids.add(uid)
         else:
             errors.append(f"{up}.unlinkId: 非法 stableId：{uid!r}")
         fact_id, sid = unlink.get("factId"), unlink.get("sourceId")
+        fact = conn.execute("SELECT status FROM facts WHERE fact_id = ?", (fact_id,)).fetchone()
+        if fact is None or fact[0] != "confirmed":
+            errors.append(f"{up}.factId: 只能撤销已确认事实的来源：{fact_id!r}")
         if not isinstance(unlink.get("reason"), str) or not unlink["reason"]:
             errors.append(f"{up}.reason: 必须写明撤销原因")
         if not conn.execute(
@@ -985,10 +1108,18 @@ def cmd_apply_links(links_path: Path, decisions_path: Path, db_path: Path) -> in
     accepted = [d["candidate"] for d in decisions if d["action"] == "accept"]
     to_link = [c for c in accepted if "linkId" in c]
     to_unlink = [c for c in accepted if "unlinkId" in c]
-    backup = backup_db(db_path)
-    conn = connect(db_path)
+    conn, backup = _prepare_write(db_path)
     try:
-        conn.execute("BEGIN")
+        # 校验实际采纳的子集，避免拒绝的补挂掩盖删除最后来源的操作。
+        if accepted:
+            accepted_source_ids = {
+                ref["sourceId"] for link in to_link for ref in link["sourceRefs"]
+            }
+            accepted_sources = [sources[sid] for sid in sorted(accepted_source_ids)]
+            validate_links_document(
+                {**data, "links": to_link, "unlinks": to_unlink, "sources": accepted_sources}, conn
+            )
+            _validate_registered_sources(conn, accepted_sources)
         now = utcnow_iso()
         for unlink in to_unlink:
             conn.execute(
@@ -1014,6 +1145,11 @@ def cmd_apply_links(links_path: Path, decisions_path: Path, db_path: Path) -> in
             conn.execute(
                 "UPDATE facts SET updated_at = ? WHERE fact_id = ?", (now, link["factId"])
             )
+        for fact_id in {item["factId"] for item in accepted}:
+            if not conn.execute(
+                "SELECT 1 FROM fact_sources WHERE fact_id = ?", (fact_id,)
+            ).fetchone():
+                raise ValidationError([f"{fact_id}: 操作后没有来源，已回滚全部补挂与撤销"])
         new_rev = get_profile_revision(conn) + 1
         conn.execute(
             "INSERT INTO profile_meta (key, value) VALUES ('profile_revision', ?)"
@@ -1081,10 +1217,12 @@ def cmd_relocate_sources(mapping_path: Path, db_path: Path, apply: bool) -> int:
     if not apply:
         print("预览完成；确认无误后加 --apply 写库")
         return 0
-    backup = backup_db(db_path)
-    conn = connect(db_path)
+    conn, backup = _prepare_write(db_path)
     try:
-        conn.execute("BEGIN")
+        # 预览之后有其他写入时不能把旧计划应用到新来源身份。
+        current_rows = conn.execute("SELECT source_id, absolute_path, sha256 FROM sources").fetchall()
+        if sorted(current_rows) != sorted(rows):
+            raise ValidationError(["来源登记在预览后发生变化，请重新运行 relocate-sources"])
         conn.executemany(
             "UPDATE sources SET absolute_path = ? WHERE source_id = ?",
             [(path, sid) for sid, path in updates],
@@ -1139,20 +1277,19 @@ def cmd_add_expression(
     会因“引用不存在”而校验失败——这是本函数提前拦截的核心错误。
     """
     errors: list[str] = []
-    if not STABLE_ID_RE.match(expression_id):
-        errors.append("--id: 必须匹配 ^[a-z][a-z0-9._-]+$ 且至少 3 字符")
-    if not (1 <= len(purpose) <= 120):
+    validate_stable_id(expression_id, errors, "--id")
+    if not purpose.strip() or not (1 <= len(purpose) <= 120):
         errors.append("--purpose: 必须是非空字符串且 ≤120 字符")
-    if not LOCALE_RE.match(locale):
+    if not LOCALE_RE.fullmatch(locale):
         errors.append("--locale: 必须匹配 ^[a-z]{2,3}(-[A-Z]{2})?$")
-    if not (1 <= len(text) <= 8000):
+    if not text.strip() or not (1 <= len(text) <= 8000):
         errors.append("正文: 必须是非空字符串且 ≤8000 字符")
     if max_chars is not None and max_chars < 1:
         errors.append("--max-chars: 必须是 ≥1 的整数")
     if not target_roles:
         errors.append("--target-roles: 至少需要一个目标岗位")
     for role in target_roles:
-        if not (1 <= len(role) <= 80):
+        if not role.strip() or not (1 <= len(role) <= 80):
             errors.append(f"--target-roles 项 {role!r}: 必须是 1–80 字符")
     if not source_fact_ids:
         errors.append("--source-fact-ids: 至少引用一个已确认事实")
@@ -1164,13 +1301,8 @@ def cmd_add_expression(
     if not db_path.exists():
         raise ValidationError([f"数据库不存在：{db_path}（请先运行 init）"])
 
-    backup = backup_db(db_path)
-    conn = connect(db_path)
+    conn, backup = _prepare_write(db_path)
     try:
-        migrate(conn)
-        ensure_meta_row(conn)
-        conn.commit()
-
         placeholders = ",".join("?" for _ in source_fact_ids)
         confirmed = {
             r[0]
@@ -1188,6 +1320,16 @@ def cmd_add_expression(
                     "（导出会因引用不存在而失败）：" + ", ".join(missing)
                 ]
             )
+
+        enum_refs = conn.execute(
+            "SELECT fact_id FROM facts WHERE field_path IN ('experience.type', 'skill.category')"
+            f" AND fact_id IN ({placeholders})", tuple(source_fact_ids)
+        ).fetchall()
+        if enum_refs:
+            raise ValidationError([
+                "以下 source-fact-ids 是分类枚举，导出不提供 factId，不能作为表达引用："
+                + ", ".join(row[0] for row in enum_refs)
+            ])
 
         if subject_ids:
             entity_ph = ",".join("?" for _ in subject_ids)
@@ -1210,7 +1352,6 @@ def cmd_add_expression(
         ).fetchone()
         action = "更新" if existing else "新建"
 
-        conn.execute("BEGIN")
         now = utcnow_iso()
         conn.execute(
             "INSERT INTO expressions (expression_id, purpose, locale, max_chars,"
@@ -1312,22 +1453,57 @@ def cmd_list_expressions(db_path: Path) -> int:
 # export
 # ---------------------------------------------------------------------------
 
-def _fact_value_record(fact: dict, fact_ids: dict) -> dict:
-    record = {"factId": fact["fact_id"], "value": json.loads(fact["value"])}
-    if fact["locale"]:
-        record["locale"] = fact["locale"]
-    fact_ids[fact["fact_id"]] = True
+def _group_export_facts(facts: list[dict]) -> dict[str, list[dict]]:
+    groups: dict[str, list[dict]] = {}
+    for fact in facts:
+        groups.setdefault(fact["field_path"], []).append(fact)
+    return groups
+
+
+def _fact_value_record(facts: list[dict], fact_ids: dict) -> dict:
+    """旧字段形状保留默认值，其余语言作为可引用的事实一并导出。"""
+    priority = {"zh-CN": 0, "en": 1, None: 2, "": 2}
+    ordered = sorted(facts, key=lambda fact: (
+        priority.get(fact["locale"], 3), fact["locale"] or "", fact["fact_id"]
+    ))
+    locales: set[str | None] = set()
+    variants = []
+    for fact in ordered:
+        locale = fact["locale"] or None
+        if locale in locales:
+            raise ValidationError([f"{fact['field_path']}: 同一字段不允许重复 locale"])
+        locales.add(locale)
+        record = {"factId": fact["fact_id"], "value": json.loads(fact["value"])}
+        if locale:
+            record["locale"] = locale
+        fact_ids[fact["fact_id"]] = True
+        variants.append(record)
+    record = variants[0]
+    if len(variants) > 1:
+        record["alternatives"] = variants[1:]
     return record
 
 
 def build_snapshot(conn: sqlite3.Connection) -> dict:
+    """多次查询共用一个读事务，防止导出不同修订的混合快照。"""
+    owns_transaction = not conn.in_transaction
+    if owns_transaction:
+        conn.execute("BEGIN")
+    try:
+        return _build_snapshot_in_transaction(conn)
+    finally:
+        if owns_transaction:
+            conn.rollback()
+
+
+def _build_snapshot_in_transaction(conn: sqlite3.Connection) -> dict:
     """把库中 confirmed 事实组装为契约 Snapshot。失败抛出 ValidationError。"""
     errors: list[str] = []
     rows = conn.execute(
         "SELECT e.entity_id, e.entity_type, f.fact_id, f.field_path, f.value, f.locale"
         " FROM facts f JOIN entities e ON e.entity_id = f.entity_id"
         " WHERE f.status = 'confirmed'"
-        " ORDER BY e.entity_id"
+        " ORDER BY e.entity_id, f.field_path, f.locale, f.fact_id"
     ).fetchall()
 
     by_entity: dict[str, dict] = {}
@@ -1376,22 +1552,16 @@ def build_snapshot(conn: sqlite3.Connection) -> dict:
         full_name: dict = {}
         contact: dict = {}
         location: dict = {}
-        for fact in person["facts"]:
-            fp = fact["field_path"]
+        for fp, variants in _group_export_facts(person["facts"]).items():
             if fp.startswith("person.fullName."):
-                full_name[fp.split(".")[-1]] = _fact_value_record(fact, fact_ids)
+                full_name[fp.split(".")[-1]] = _fact_value_record(variants, fact_ids)
             elif fp.startswith("person.contact."):
-                contact[fp.split(".")[-1]] = _fact_value_record(fact, fact_ids)
+                contact[fp.split(".")[-1]] = _fact_value_record(variants, fact_ids)
             elif fp.startswith("person.location."):
-                location[fp.split(".")[-1]] = _fact_value_record(fact, fact_ids)
+                location[fp.split(".")[-1]] = _fact_value_record(variants, fact_ids)
             else:
                 errors.append(f"person 实体包含未知字段：{fp}（{person['id']}）")
-        if full_name:
-            snapshot_person["fullName"] = full_name
-        if contact:
-            snapshot_person["contact"] = contact
-        if location:
-            snapshot_person["location"] = location
+        snapshot_person.update(fullName=full_name, contact=contact, location=location)
 
     # education / experiences / skills / awards
     def _build_records(items: list, entity_type: str) -> list:
@@ -1400,9 +1570,11 @@ def build_snapshot(conn: sqlite3.Connection) -> dict:
             record: dict = {"id": entity_id}
             narratives: list = []
             has_type = False
-            for fact in facts:
-                fp = fact["field_path"]
+            for fp, variants in _group_export_facts(facts).items():
+                fact = variants[0]
                 if entity_type == "experience" and fp == "experience.type":
+                    if len(variants) != 1:
+                        errors.append(f"{entity_id}: experience.type 只能有一条确认事实")
                     value = json.loads(fact["value"])
                     if value not in EXPERIENCE_TYPES:
                         errors.append(
@@ -1412,6 +1584,8 @@ def build_snapshot(conn: sqlite3.Connection) -> dict:
                     record["type"] = value
                     has_type = True
                 elif entity_type == "skill" and fp == "skill.category":
+                    if len(variants) != 1:
+                        errors.append(f"{entity_id}: skill.category 只能有一条确认事实")
                     value = json.loads(fact["value"])
                     if value not in SKILL_CATEGORIES:
                         errors.append(
@@ -1420,21 +1594,18 @@ def build_snapshot(conn: sqlite3.Connection) -> dict:
                         )
                     record["category"] = value
                 elif entity_type == "experience" and FACT_SLUG_RE.match(fp):
-                    if not fact["locale"]:
-                        errors.append(
-                            f"{fact['fact_id']}: narrative 事实（{fp}）必须提供 locale"
-                        )
-                    narratives.append(
-                        {
-                            "factId": fact["fact_id"],
-                            "text": json.loads(fact["value"]),
-                            "locale": fact["locale"],
-                        }
-                    )
-                    fact_ids[fact["fact_id"]] = True
+                    for variant in variants:
+                        if not variant["locale"]:
+                            errors.append(f"{variant['fact_id']}: narrative 事实（{fp}）必须提供 locale")
+                        narratives.append({
+                            "factId": variant["fact_id"],
+                            "text": json.loads(variant["value"]),
+                            "locale": variant["locale"],
+                        })
+                        fact_ids[variant["fact_id"]] = True
                 elif fp in FIELD_PATH_TO_EXPORT_KEY:
                     record[FIELD_PATH_TO_EXPORT_KEY[fp]] = _fact_value_record(
-                        fact, fact_ids
+                        variants, fact_ids
                     )
                 else:
                     errors.append(f"{entity_id}: 未知字段 {fp}")
@@ -1530,32 +1701,59 @@ def build_snapshot(conn: sqlite3.Connection) -> dict:
 
 def cmd_export(db_path: Path, output: Path) -> int:
     """导出正式 Snapshot（只含 confirmed 事实与 confirmed 表达）。"""
+    import tempfile
+    from source_integrity import scan_source_integrity
+
     if not db_path.exists():
         print(f"数据库不存在：{db_path}", file=sys.stderr)
         return 1
-    if needs_migration(db_path):
-        backup_db(db_path)
-    conn = connect(db_path)
+    conn, _backup = _prepare_write(db_path)
+    temporary_path: Path | None = None
     try:
-        migrate(conn)
-        ensure_meta_row(conn)
-        conn.commit()
         snapshot = build_snapshot(conn)
         errors = validate_snapshot(snapshot)
+        orphaned = conn.execute(
+            "SELECT COUNT(*) FROM facts f WHERE f.status='confirmed' AND NOT EXISTS "
+            "(SELECT 1 FROM fact_sources fs WHERE fs.fact_id=f.fact_id)"
+        ).fetchone()[0]
+        if orphaned:
+            errors.append(f"{orphaned} 条确认事实没有来源，不允许导出")
         if errors:
             raise ValidationError(errors)
+        integrity = scan_source_integrity(conn)
+        if any(integrity[key] for key in ("changedSources", "missingSources", "unreadableSources")):
+            print(
+                f"来源核验提示：变化 {integrity['changedSources']}，缺失 {integrity['missingSources']}，"
+                f"无法读取 {integrity['unreadableSources']}；"
+                f"{integrity['factsWithoutVerifiedSources']} 条确认事实没有指纹匹配的来源。"
+                "本次导出保留本人确认的事实，结构校验通过不代表来源仍与登记一致。",
+                file=sys.stderr,
+            )
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=output.parent,
+            prefix=f".{output.name}.", suffix=".tmp", delete=False,
+        ) as stream:
+            temporary_path = Path(stream.name)
+            json.dump(snapshot, stream, ensure_ascii=False, indent=2)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary_path, output)
+        temporary_path = None
         conn.execute(
             "INSERT INTO profile_meta (key, value) VALUES ('last_exported_at', ?)"
             " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            (utcnow_iso(),),
+            (snapshot["exportedAt"],),
         )
         conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
-    output.parent.mkdir(parents=True, exist_ok=True)
-    with open(output, "w", encoding="utf-8") as f:
-        json.dump(snapshot, f, ensure_ascii=False, indent=2)
-        f.write("\n")
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
     print(
         f"已导出 Snapshot：{output}"
         f"（profileRevision={snapshot['profileRevision']}）"
@@ -1568,265 +1766,10 @@ def cmd_export(db_path: Path, output: Path) -> int:
 # ---------------------------------------------------------------------------
 
 def validate_snapshot(snapshot: object) -> list[str]:
-    errors: list[str] = []
-    if not isinstance(snapshot, dict):
-        return ["Snapshot 根节点必须是 JSON 对象"]
-    for key in (
-        "schemaVersion",
-        "profileRevision",
-        "exportedAt",
-        "person",
-        "education",
-        "experiences",
-        "skills",
-        "awards",
-        "expressions",
-    ):
-        if key not in snapshot:
-            errors.append(f"缺少必填字段：{key}")
-    if snapshot.get("schemaVersion") != SCHEMA_VERSION:
-        errors.append(f"schemaVersion 必须是 {SCHEMA_VERSION}")
-    rev = snapshot.get("profileRevision")
-    if not isinstance(rev, int) or rev < 1:
-        errors.append("profileRevision 必须是 ≥1 的整数")
-    exp_at = snapshot.get("exportedAt")
-    if not isinstance(exp_at, str):
-        errors.append("exportedAt 必须是非空字符串")
-    else:
-        try:
-            datetime.fromisoformat(exp_at.replace("Z", "+00:00"))
-        except ValueError:
-            errors.append(f"exportedAt 不是合法的 ISO 8601 时间：{exp_at}")
+    # 公共契约随程序离线分发，两端副本一致性由合成测试检查。
+    from snapshot_contract import validate_snapshot_contract
 
-    fact_ids: dict[str, bool] = {}
-    entity_ids: dict[str, bool] = {}
-
-    def register_id(value: object, registry: dict, path: str) -> None:
-        if not isinstance(value, str) or not STABLE_ID_RE.match(value):
-            errors.append(f"{path}: 非法 stableId：{value!r}")
-            return
-        if value in registry:
-            errors.append(f"{path}: 重复 ID {value}")
-            return
-        registry[value] = True
-
-    def validate_locale_quiet(loc: object, path: str) -> None:
-        if loc is None:
-            return
-        if not isinstance(loc, str) or not LOCALE_RE.match(loc):
-            errors.append(f"{path}: 非法 locale：{loc!r}")
-
-    def validate_fact_value(obj: object, path: str, required_locale: bool = False) -> None:
-        if not isinstance(obj, dict):
-            errors.append(f"{path}: 必须是对象")
-            return
-        if "factId" not in obj or "value" not in obj:
-            errors.append(f"{path}: 缺少 factId 或 value")
-        fid = obj.get("factId")
-        if isinstance(fid, str) and STABLE_ID_RE.match(fid):
-            if fid in fact_ids:
-                errors.append(f"{path}.factId: 重复 factId {fid}")
-            else:
-                fact_ids[fid] = True
-        elif not isinstance(fid, str):
-            errors.append(f"{path}.factId: 必须是字符串")
-        else:
-            errors.append(f"{path}.factId: 非法 stableId：{fid!r}")
-        val = obj.get("value")
-        if not isinstance(val, str) or not (1 <= len(val) <= 4000):
-            errors.append(f"{path}.value: 必须是非空字符串且 ≤4000 字符")
-        loc = obj.get("locale")
-        if required_locale and not isinstance(loc, str):
-            errors.append(f"{path}.locale: 必填")
-        validate_locale_quiet(loc, f"{path}.locale")
-
-    person = snapshot.get("person")
-    if not isinstance(person, dict):
-        errors.append("person: 必须是对象")
-    else:
-        register_id(person.get("id"), entity_ids, "person.id")
-        full_name = person.get("fullName")
-        if full_name is not None:
-            if not isinstance(full_name, dict):
-                errors.append("person.fullName: 必须是对象")
-            else:
-                if not full_name:
-                    errors.append("person.fullName: 至少需要 1 个字段")
-                for k in ("zhCN", "en", "givenNameEn", "familyNameEn"):
-                    if k in full_name:
-                        validate_fact_value(full_name[k], f"person.fullName.{k}")
-        for section in ("contact", "location"):
-            data = person.get(section)
-            if data is not None:
-                if not isinstance(data, dict):
-                    errors.append(f"person.{section}: 必须是对象")
-                else:
-                    for k, v in data.items():
-                        validate_fact_value(v, f"person.{section}.{k}")
-
-    def validate_record_array(arr: object, path: str, kind: str) -> None:
-        if not isinstance(arr, list):
-            errors.append(f"{path}: 必须是数组")
-            return
-        for idx, rec in enumerate(arr):
-            rp = f"{path}[{idx}]"
-            if not isinstance(rec, dict):
-                errors.append(f"{rp}: 必须是对象")
-                continue
-            register_id(rec.get("id"), entity_ids, f"{rp}.id")
-            if kind == "education":
-                if "institution" not in rec:
-                    errors.append(f"{rp}: 缺少必填字段 institution")
-                for key in (
-                    "institution",
-                    "degree",
-                    "major",
-                    "minor",
-                    "location",
-                    "startDate",
-                    "endDate",
-                    "gpa",
-                    "averageScore",
-                    "ranking",
-                ):
-                    if key in rec:
-                        validate_fact_value(rec[key], f"{rp}.{key}")
-                if "isHighest" in rec and not isinstance(rec["isHighest"], bool):
-                    errors.append(f"{rp}.isHighest: 必须是布尔值")
-            elif kind == "experience":
-                if "type" not in rec:
-                    errors.append(f"{rp}: 缺少必填字段 type")
-                elif rec["type"] not in EXPERIENCE_TYPES:
-                    errors.append(f"{rp}.type: 必须 ∈ {EXPERIENCE_TYPES}")
-                if "title" not in rec:
-                    errors.append(f"{rp}: 缺少必填字段 title")
-                for key in ("title", "organization", "role", "location", "startDate", "endDate"):
-                    if key in rec:
-                        validate_fact_value(rec[key], f"{rp}.{key}")
-                facts = rec.get("facts")
-                if "facts" not in rec:
-                    errors.append(f"{rp}: 缺少必填字段 facts")
-                elif not isinstance(facts, list):
-                    errors.append(f"{rp}.facts: 必须是数组")
-                else:
-                    for fidx, nar in enumerate(facts):
-                        # 叙述型事实为 narrativeFact：{factId, text, locale}
-                        np = f"{rp}.facts[{fidx}]"
-                        if not isinstance(nar, dict):
-                            errors.append(f"{np}: 必须是对象")
-                            continue
-                        if "factId" not in nar or "text" not in nar:
-                            errors.append(f"{np}: 缺少 factId 或 text")
-                        nfid = nar.get("factId")
-                        if isinstance(nfid, str) and STABLE_ID_RE.match(nfid):
-                            if nfid in fact_ids:
-                                errors.append(f"{np}.factId: 重复 factId {nfid}")
-                            else:
-                                fact_ids[nfid] = True
-                        elif not isinstance(nfid, str):
-                            errors.append(f"{np}.factId: 必须是字符串")
-                        else:
-                            errors.append(f"{np}.factId: 非法 stableId：{nfid!r}")
-                        ntext = nar.get("text")
-                        if not isinstance(ntext, str) or not (1 <= len(ntext) <= 4000):
-                            errors.append(f"{np}.text: 必须是非空字符串且 ≤4000 字符")
-                        nloc = nar.get("locale")
-                        if not isinstance(nloc, str):
-                            errors.append(f"{np}.locale: 必填")
-                        validate_locale_quiet(nloc, f"{np}.locale")
-            elif kind == "skill":
-                if "category" not in rec:
-                    errors.append(f"{rp}: 缺少必填字段 category")
-                elif rec["category"] not in SKILL_CATEGORIES:
-                    errors.append(f"{rp}.category: 必须 ∈ {SKILL_CATEGORIES}")
-                if "name" not in rec:
-                    errors.append(f"{rp}: 缺少必填字段 name")
-                for key in ("name", "level", "details"):
-                    if key in rec:
-                        validate_fact_value(rec[key], f"{rp}.{key}")
-            elif kind == "award":
-                if "name" not in rec:
-                    errors.append(f"{rp}: 缺少必填字段 name")
-                for key in ("name", "issuer", "date", "details"):
-                    if key in rec:
-                        validate_fact_value(rec[key], f"{rp}.{key}")
-
-    validate_record_array(snapshot.get("education"), "education", "education")
-    validate_record_array(snapshot.get("experiences"), "experiences", "experience")
-    validate_record_array(snapshot.get("skills"), "skills", "skill")
-    validate_record_array(snapshot.get("awards"), "awards", "award")
-
-    expressions = snapshot.get("expressions")
-    if not isinstance(expressions, list):
-        errors.append("expressions: 必须是数组")
-    else:
-        for idx, rec in enumerate(expressions):
-            rp = f"expressions[{idx}]"
-            if not isinstance(rec, dict):
-                errors.append(f"{rp}: 必须是对象")
-                continue
-            register_id(rec.get("id"), entity_ids, f"{rp}.id")
-            for key in ("purpose", "locale", "maxChars", "targetRoles", "text", "sourceFactIds"):
-                if key not in rec:
-                    errors.append(f"{rp}: 缺少必填字段 {key}")
-            purpose = rec.get("purpose")
-            if not isinstance(purpose, str) or not (1 <= len(purpose) <= 120):
-                errors.append(f"{rp}.purpose: 必须是非空字符串且 ≤120 字符")
-            validate_locale_quiet(rec.get("locale"), f"{rp}.locale")
-            mc = rec.get("maxChars")
-            if mc is not None and (not isinstance(mc, int) or mc < 1):
-                errors.append(f"{rp}.maxChars: 必须是 ≥1 的整数或 null")
-            roles = rec.get("targetRoles")
-            if not isinstance(roles, list):
-                errors.append(f"{rp}.targetRoles: 必须是数组")
-            elif not all(isinstance(r, str) and 1 <= len(r) <= 80 for r in roles):
-                errors.append(f"{rp}.targetRoles: 每项必须是非空字符串且 ≤80 字符")
-            elif len(set(roles)) != len(roles):
-                errors.append(f"{rp}.targetRoles: 不允许重复项")
-            text = rec.get("text")
-            if not isinstance(text, str) or not (1 <= len(text) <= 8000):
-                errors.append(f"{rp}.text: 必须是非空字符串且 ≤8000 字符")
-            subs = rec.get("subjectIds")
-            if subs is not None:
-                if not isinstance(subs, list):
-                    errors.append(f"{rp}.subjectIds: 必须是数组")
-                elif len(set(subs)) != len(subs):
-                    errors.append(f"{rp}.subjectIds: 不允许重复项")
-            srcs = rec.get("sourceFactIds")
-            if not isinstance(srcs, list) or not srcs:
-                errors.append(f"{rp}.sourceFactIds: 必须是非空数组")
-            elif len(set(srcs)) != len(srcs):
-                errors.append(f"{rp}.sourceFactIds: 不允许重复项")
-
-    # 引用完整性
-    for rec in expressions if isinstance(expressions, list) else []:
-        if not isinstance(rec, dict):
-            continue
-        for sid in rec.get("sourceFactIds", []):
-            if isinstance(sid, str) and STABLE_ID_RE.match(sid) and sid not in fact_ids:
-                errors.append(
-                    f"expressions {rec.get('id')}: sourceFactIds 引用不存在的事实 {sid}"
-                )
-        for sid in rec.get("subjectIds", []):
-            if isinstance(sid, str) and STABLE_ID_RE.match(sid) and sid not in entity_ids:
-                errors.append(
-                    f"expressions {rec.get('id')}: subjectIds 引用不存在的实体 {sid}"
-                )
-
-    # 禁止键递归检查
-    def walk(obj: object, path: str) -> None:
-        if isinstance(obj, dict):
-            for k, v in obj.items():
-                if k in FORBIDDEN_EXPORT_KEYS:
-                    errors.append(f"{path}.{k}: 导出内容禁止包含 {k}")
-                walk(v, f"{path}.{k}")
-        elif isinstance(obj, list):
-            for idx, v in enumerate(obj):
-                walk(v, f"{path}[{idx}]")
-
-    walk(snapshot, "snapshot")
-
-    return errors
+    return validate_snapshot_contract(snapshot)
 
 
 # ---------------------------------------------------------------------------
@@ -1917,12 +1860,18 @@ def main(argv: list[str] | None = None) -> int:
         )
         for d in dirs:
             (PROFILE_DB_DIR / d).mkdir(parents=True, exist_ok=True)
-        backup = backup_db(args.db) if needs_migration(args.db) else None
+        existed = args.db.exists()
         conn = connect(args.db)
         try:
+            conn.execute("BEGIN IMMEDIATE")
+            current = current_schema_version(conn)
+            backup = backup_db(args.db) if existed and current < DB_SCHEMA_VERSION else None
             migrate(conn)
             ensure_meta_row(conn)
             conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
         finally:
             conn.close()
         note = f"，备份：{backup.name}" if backup else ""

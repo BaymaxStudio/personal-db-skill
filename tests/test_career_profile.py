@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import sqlite3
 import sys
 import tempfile
 import unittest
@@ -19,20 +20,20 @@ sys.path.insert(0, str(PROFILE_DB_DIR))
 import career_profile as cp  # noqa: E402
 
 
-SOURCE_TEXT = """# SONG Sample
+SOURCE_TEXT = """# Alex Example
 Phone: +86 100-0000-0000
 Email: sample@example.com
-City: Changchun
+City: Example City
 Institute: Sample University
-Degree: Bachelor of Economics
-Major: International Economics and Trade
-GPA: 3.14/4.0 Average Score: 83.75/100 Ranking: 33/91
-Project: Industrial Development Path (2024-05 to 2025-05)
-Project: Industrial Development Path (2024-05 to 2025-04)
-Fieldwork: 48 villages
-Class: Youth Center Deputy Director (2023-09 to 2024-09)
-Band: Wind Orchestra (2022-09 to 2026-06)
-Language: English IELTS 6.5
+Degree: Bachelor of Science
+Major: Computer Science
+GPA: 3.60/4.0 Average Score: 90.00/100 Ranking: 8/100
+Project: Example Research Project (2024-05 to 2025-05)
+Project: Example Research Project (2024-05 to 2025-04)
+Fieldwork: 12 sample sites
+Class: Student Club Coordinator (2023-09 to 2024-09)
+Band: Campus Ensemble (2022-09 to 2026-06)
+Language: English IELTS 7.5
 Award: Academic Scholarship (2025-11)
 """
 
@@ -57,7 +58,7 @@ def make_candidate(
         "locale": locale,
         "status": status,
         "conflictGroupId": conflict_group_id,
-        "sourceRefs": source_refs or [{"sourceId": "source.resume.md", "locator": "L1", "excerpt": "SONG Sample"}],
+        "sourceRefs": source_refs or [{"sourceId": "source.resume.md", "locator": "L1", "excerpt": "Alex Example"}],
     }
 
 
@@ -88,7 +89,7 @@ def write_candidates_file(path: Path, sources: list[dict], candidates: list[dict
 def write_decisions_file(path: Path, decisions: list[dict]) -> Path:
     doc = {
         "decisionVersion": "1.0.0",
-        "decidedBy": "Baymax",
+        "decidedBy": "Sample Reviewer",
         "decidedAt": "2026-08-31T09:00:00Z",
         "decisions": decisions,
     }
@@ -100,11 +101,11 @@ def write_decisions_file(path: Path, decisions: list[dict]) -> Path:
 def standard_candidates() -> list[dict]:
     """一组覆盖全部实体类型、满足契约必填的最小候选集。"""
     refs = [{"sourceId": "source.resume.md", "locator": "L1", "excerpt": "Email: sample@example.com"}]
-    refs_name = [{"sourceId": "source.resume.md", "locator": "L1", "excerpt": "SONG Sample"}]
-    refs_title = [{"sourceId": "source.resume.md", "locator": "L1", "excerpt": "Industrial Development Path"}]
+    refs_name = [{"sourceId": "source.resume.md", "locator": "L1", "excerpt": "Alex Example"}]
+    refs_title = [{"sourceId": "source.resume.md", "locator": "L1", "excerpt": "Example Research Project"}]
     return [
         make_candidate("candidate.person.name.001", "person", "person.owner", "person.fullName.en",
-                       "SONG Sample", locale="en", source_refs=refs_name),
+                       "Alex Example", locale="en", source_refs=refs_name),
         make_candidate("candidate.person.email.001", "person", "person.owner", "person.contact.email",
                        "sample@example.com", source_refs=refs),
         make_candidate("candidate.person.phone.001", "person", "person.owner", "person.contact.phone",
@@ -112,23 +113,23 @@ def standard_candidates() -> list[dict]:
         make_candidate("candidate.education.inst.001", "education", "education.sample",
                        "education.institution", "Sample University", locale="en"),
         make_candidate("candidate.education.gpa.001", "education", "education.sample",
-                       "education.gpa", "3.14/4.0"),
+                       "education.gpa", "3.60/4.0"),
         make_candidate("candidate.experience.type.001", "experience", "experience.project",
                        "experience.type", "research"),
         make_candidate("candidate.experience.title.001", "experience", "experience.project",
-                       "experience.title", "Industrial Development Path", locale="en",
+                       "experience.title", "Example Research Project", locale="en",
                        source_refs=refs_title),
         make_candidate("candidate.experience.start.001", "experience", "experience.project",
                        "experience.startDate", "2024-05"),
         make_candidate("candidate.experience.fact.001", "experience", "experience.project",
-                       "experience.fact.main", "Coordinated fieldwork with 48 villages.",
+                       "experience.fact.main", "Coordinated fieldwork with 12 sample sites.",
                        locale="en"),
         make_candidate("candidate.skill.category.001", "skill", "skill.language.english",
                        "skill.category", "language"),
         make_candidate("candidate.skill.name.001", "skill", "skill.language.english",
                        "skill.name", "English", locale="en"),
         make_candidate("candidate.skill.level.001", "skill", "skill.language.english",
-                       "skill.level", "IELTS 6.5", locale="en"),
+                       "skill.level", "IELTS 7.5", locale="en"),
         make_candidate("candidate.award.name.001", "award", "award.scholarship",
                        "award.name", "Academic Scholarship", locale="en"),
     ]
@@ -159,10 +160,13 @@ class CareerProfileTestCase(unittest.TestCase):
         self.backup_dir_cp = self.tmp / "backups"
         self._orig_backup_dir = cp.BACKUP_DIR
         cp.BACKUP_DIR = self.backup_dir_cp
+        self._orig_project_dir = cp.PROFILE_DB_DIR
+        cp.PROFILE_DB_DIR = self.tmp
 
     def tearDown(self):
         cp.ALLOWED_SOURCE_DIRS = self._orig_allowed
         cp.BACKUP_DIR = self._orig_backup_dir
+        cp.PROFILE_DB_DIR = self._orig_project_dir
         self._tmp.cleanup()
 
     def write_standard_candidates(self, candidates=None):
@@ -211,7 +215,8 @@ class TestInit(CareerProfileTestCase):
         self.assertTrue(expected.issubset(tables), f"缺少表：{expected - tables}")
         self.assertEqual(self.query("SELECT value FROM profile_meta WHERE key='profile_revision'"),
                          [("0",)])
-        self.assertEqual(self.query("SELECT version FROM schema_migrations"), [(1,), (2,)])
+        self.assertEqual(self.query("SELECT version FROM schema_migrations"),
+                         [(version,) for version in range(1, cp.DB_SCHEMA_VERSION + 1)])
 
     def test_init_idempotent_keeps_data(self):
         self.init_db()
@@ -238,7 +243,7 @@ class TestInit(CareerProfileTestCase):
         self.assertEqual(len(backups), 1)
         self.assertRegex(
             backups[0].name,
-            r"^career_profile\.\d{8}T\d{6}Z\.[0-9a-f]{64}\.db$",
+            r"^career_profile\.\d{8}T\d{12}Z\.[0-9a-f]{32}\.[0-9a-f]{64}\.db$",
         )
 
 
@@ -294,12 +299,12 @@ class TestValidateCandidates(CareerProfileTestCase):
                            "experience.endDate", "2025-05", status="conflict",
                            conflict_group_id="conflict.project-end",
                            source_refs=[{"sourceId": "source.resume.md", "locator": "L2",
-                                         "excerpt": "Industrial Development Path (2024-05 to 2025-05)"}])
+                                         "excerpt": "Example Research Project (2024-05 to 2025-05)"}])
         b = make_candidate("candidate.project.end.002", "experience", "experience.project",
                            "experience.endDate", "2025-04", status="conflict",
                            conflict_group_id="conflict.project-end",
                            source_refs=[{"sourceId": "source.resume.md", "locator": "L3",
-                                         "excerpt": "Industrial Development Path (2024-05 to 2025-04)"}])
+                                         "excerpt": "Example Research Project (2024-05 to 2025-04)"}])
         self.write_standard_candidates([a, b])
         self.assertEqual(cp.main(["validate-candidates", str(self.candidates_path)]), 0)
 
@@ -360,13 +365,15 @@ class TestApplyDecisions(CareerProfileTestCase):
     def test_backup_created_before_apply(self):
         cands = standard_candidates()
         write_decisions_file(self.decisions_path, [decision(cands[1], "accept")])
-        before = cp.sha256_file(self.db_path)
+        with sqlite3.connect(self.db_path) as connection:
+            before = list(connection.iterdump())
         cp.main(["apply-decisions", str(self.candidates_path), str(self.decisions_path),
                  "--db", str(self.db_path)])
         backups = list(self.backup_dir_cp.glob("career_profile.*.db"))
         self.assertEqual(len(backups), 1)
-        self.assertIn(before, backups[0].name)
-        self.assertEqual(cp.sha256_file(backups[0]), before)
+        self.assertIn(cp.sha256_file(backups[0]), backups[0].name)
+        with sqlite3.connect(backups[0]) as connection:
+            self.assertEqual(list(connection.iterdump()), before)
 
     def test_reject_and_replace(self):
         cands = standard_candidates()
@@ -413,12 +420,12 @@ class TestApplyDecisions(CareerProfileTestCase):
                            "experience.endDate", "2025-05", status="conflict",
                            conflict_group_id="conflict.project-end",
                            source_refs=[{"sourceId": "source.resume.md", "locator": "L2",
-                                         "excerpt": "Industrial Development Path (2024-05 to 2025-05)"}])
+                                         "excerpt": "Example Research Project (2024-05 to 2025-05)"}])
         b = make_candidate("candidate.project.end.002", "experience", "experience.project",
                            "experience.endDate", "2025-04", status="conflict",
                            conflict_group_id="conflict.project-end",
                            source_refs=[{"sourceId": "source.resume.md", "locator": "L3",
-                                         "excerpt": "Industrial Development Path (2024-05 to 2025-04)"}])
+                                         "excerpt": "Example Research Project (2024-05 to 2025-04)"}])
         # a/b 为冲突组候选；补 person 与 experience 必填字段供导出
         std = standard_candidates()
         person_name = std[0]
@@ -494,14 +501,14 @@ class TestSupersede(CareerProfileTestCase):
         self.init_db()
         self.cands = standard_candidates()
         self.write_standard_candidates(self.cands)
-        self.apply(self.cands, [(self.cands[-2], "accept", None)])  # skill.level = IELTS 6.5
+        self.apply(self.cands, [(self.cands[-2], "accept", None)])  # skill.level = IELTS 7.5
         self.old = "candidate.skill.level.001"
 
     def replacement(self, supersedes=None, field="skill.level"):
         c = make_candidate("candidate.skill.level.002", "skill", "skill.language.english", field,
-                           "IELTS 6.5 (Academic)", locale="en",
+                           "IELTS 7.5 (Academic)", locale="en",
                            source_refs=[{"sourceId": "source.resume.md", "locator": "L1",
-                                         "excerpt": "Language: English IELTS 6.5"}])
+                                         "excerpt": "Language: English IELTS 7.5"}])
         c["supersedes"] = supersedes or self.old
         return c
 
@@ -651,7 +658,7 @@ class TestLinks(CareerProfileTestCase):
         self.assertTrue(any("库中不存在事实" in e for e in errors))
 
     def test_existing_link_rejected(self):
-        self.write_links([self.link("link.again", self.level_fact, excerpt="Language: English IELTS 6.5",
+        self.write_links([self.link("link.again", self.level_fact, excerpt="Language: English IELTS 7.5",
                                     source_id="source.resume.md")], sources=self.sources)
         self.assertTrue(any("已经挂有来源" in e for e in self.validation_errors()))
 
@@ -733,7 +740,7 @@ class TestExport(CareerProfileTestCase):
     def test_export_only_confirmed(self):
         # 追加一个会被拒绝的事实（setUp 已应用标准候选）
         rej = make_candidate("candidate.person.loc.001", "person", "person.owner",
-                             "person.location.currentCity", "Changchun", locale="zh-CN")
+                             "person.location.currentCity", "Example City", locale="zh-CN")
         write_candidates_file(self.candidates_path, self.sources, [rej])
         write_decisions_file(self.decisions_path, [decision(rej, "reject")])
         cp.main(["apply-decisions", str(self.candidates_path), str(self.decisions_path),
@@ -743,7 +750,7 @@ class TestExport(CareerProfileTestCase):
             snapshot = cp.build_snapshot(conn)
         finally:
             conn.close()
-        self.assertNotIn("location", snapshot["person"])
+        self.assertEqual(snapshot["person"]["location"], {})
         self.assertEqual(snapshot["profileRevision"], 2)
         self.assertEqual(snapshot["person"]["contact"]["email"]["value"], "sample@example.com")
 

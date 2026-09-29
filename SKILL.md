@@ -40,7 +40,7 @@ description: >-
 
 1. 问用户把库建在哪（默认 `~/个人资料库`）。把本 skill 的 `app/` 里所有内容（含隐藏的 `.gitignore`）整个复制到该目录，作为项目根；再把本 skill 根目录的 `README.md` 也复制到项目根（这是给用户看的说明）。
 2. `cd` 进去，`python3 career_profile.py init`（会建好 `materials/ staging/ review/ exports/` 和数据库）。
-3. `app/.gitignore` 已随复制到位（隐私数据不进 Git；若用户要版本管理，只跟踪 `career_profile.py` 与 `web/`）。
+3. `app/.gitignore` 已随复制到位。若用户要版本管理，跟踪代码、`career-profile.schema.json` 与 `web/`；保留 `snapshot_contract.py`、`source_integrity.py` 两个运行模块，个人材料、数据库、配置和导出不进 Git。
 4. 告诉用户：把材料（简历、成绩单、获奖证明……）放进 `materials/`，然后回来跟你说一声；并把项目根的 `README.md` 指给用户看。
 
 ## 交付给别人（把整套东西给朋友）
@@ -93,7 +93,7 @@ bash tests/make_screenshot.sh  # 用合成数据重录 docs/viewer-demo.png（�
 | validate 报"不在允许读取目录内" | 材料没放进 `materials/` | 放进 `materials/`；或用 `PERSONAL_DB_MATERIALS` / 项目内 `config.json` 的 `{"materials":[...]}` 指定目录 |
 | export 报缺 person 实体 | 首批候选没录姓名等 `person.*` | 先补 `person.fullName.*`（entityKey=`person.owner`）再导出 |
 | export 报"缺少 experience.type / skill.category / award.name…" | 契约必填字段缺失 | 按 `reference/data-model.md` 补必填字段 |
-| `disk I/O error` | 查看器与写库并发 + 残留 journal | 停查看器 → 删 `data/*.sqlite3-journal` → 重试（库已是 WAL） |
+| `disk I/O error` | 可能涉及磁盘、权限或恢复状态 | 停止新写入，保留数据库及 WAL/journal，检查磁盘空间、权限和在线备份；不要手动删除日志文件 |
 | 端口 8733 被占 | 别的程序占用 | `lsof -i tcp:8733` 看是谁，或换 `--port` |
 | 网页空白 | 服务没起来 / 端口不对 | 重跑 `serve.py` 并看终端日志；确认地址是 `http://127.0.0.1:<port>` |
 | 用户说"这条别写进去" | — | 必须尊重：该候选 `reject`，不得改个措辞偷偷入库 |
